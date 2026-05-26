@@ -1,0 +1,56 @@
+<?xml version="1.0" encoding="utf-8"?>
+<manifest xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:tools="http://schemas.android.com/tools">
+
+    <!-- Required for Bluetooth communication with the glasses -->
+    <uses-permission android:name="android.permission.BLUETOOTH" />
+    <uses-permission android:name="android.permission.BLUETOOTH_CONNECT" />
+    <uses-permission android:name="android.permission.INTERNET" />
+
+    <!-- Optional: only needed if you want to use your phone camera as a mock device -->
+    <uses-permission android:name="android.permission.CAMERA" />
+    <uses-feature android:name="android.hardware.camera" android:required="false" />
+
+    <application
+        android:name=".MyApplication"
+        android:allowBackup="true"
+        android:icon="@mipmap/ic_launcher"
+        android:label="@string/app_name"
+        android:roundIcon="@mipmap/ic_launcher_round"
+        android:supportsRtl="true"
+        android:theme="@style/Theme.RayBanDisplayDemo"
+        tools:targetApi="31">
+
+        <!-- ====================== META WEARABLES TOOLKIT ====================== -->
+        <!-- Replace these two values with your real ones from the Developer Center -->
+        <meta-data android:name="com.meta.wearable.mwdat.APPLICATION_ID" android:value="3385406711666257" />
+        <meta-data android:name="com.meta.wearable.mwdat.CLIENT_TOKEN" android:value="AR|3385406711666257|1c5b80cd2d35b95b70942d91422affd7" />
+
+        <!-- Enable the Device Access Toolkit -->
+        <meta-data
+            android:name="com.meta.wearable.mwdat.DAM_ENABLED"
+            android:value="true" />
+        <!-- =================================================================== -->
+
+        <activity
+            android:name=".MainActivity"
+            android:exported="true"
+            android:theme="@style/Theme.RayBanDisplayDemo">
+
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+
+            <!-- Required for the Meta AI app to return to your app after registration -->
+            <intent-filter>
+                <action android:name="android.intent.action.VIEW" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <category android:name="android.intent.category.BROWSABLE" />
+                <data android:scheme="raybandisplaydemo" />
+            </intent-filter>
+        </activity>
+
+    </application>
+
+</manifest>
