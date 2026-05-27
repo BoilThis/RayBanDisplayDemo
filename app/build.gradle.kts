@@ -4,8 +4,7 @@ plugins {
 }
 
 android {
-    namespace = "com.boilthis.raybandispla" +
-            "ydemo"
+    namespace = "com.boilthis.raybandisplaydemo"
     compileSdk {
         version = release(36) {
             minorApiLevel = 1
@@ -52,15 +51,7 @@ dependencies {
     implementation(libs.androidx.appcompat)
     implementation("com.google.android.material:material:1.14.0")
     
-    // Room Database
-    val roomVersion = "2.6.1"
-    implementation("androidx.room:room-runtime:$roomVersion")
-    implementation("androidx.room:room-ktx:$roomVersion")
-    annotationProcessor("androidx.room:room-compiler:$roomVersion")
-    // For Kotlin Symbol Processing (KSP) if available, but let's stick to simple kapt/annotationProcessor for now
-    // implementation("androidx.room:room-compiler:$roomVersion")
-
-    testImplementation(libs.junit)
+    implementation(libs.junit)
     androidTestImplementation(platform(libs.androidx.compose.bom))
     androidTestImplementation(libs.androidx.compose.ui.test.junit4)
     androidTestImplementation(libs.androidx.espresso.core)
@@ -70,5 +61,5 @@ dependencies {
     implementation("com.meta.wearable:mwdat-core:0.7.0")
     implementation("com.meta.wearable:mwdat-camera:0.7.0")
     implementation("com.meta.wearable:mwdat-display:0.7.0")
-    implementation("com.meta.wearable:mwdat-mockdevice:0.7.0")   // useful for testing without glasses
+    implementation("com.meta.wearable:mwdat-mockdevice:0.7.0")
 }

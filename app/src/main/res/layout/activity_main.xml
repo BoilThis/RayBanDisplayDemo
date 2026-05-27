@@ -1,221 +1,223 @@
 <?xml version="1.0" encoding="utf-8"?>
-<ScrollView xmlns:android="http://schemas.android.com/apk/res/android"
+<androidx.constraintlayout.widget.ConstraintLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
-    android:background="#F8F9FA">
+    android:background="#FFFFFF">
 
+    <!-- Minimalist Header Bar -->
     <LinearLayout
+        android:id="@+id/headerBar"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
+        android:background="#FFFFFF"
         android:orientation="vertical"
-        android:padding="20dp">
+        android:paddingHorizontal="24dp"
+        android:paddingVertical="16dp"
+        app:layout_constraintTop_toTopOf="parent">
 
-        <!-- Header Status Section -->
         <TextView
             android:id="@+id/statusText"
-            android:layout_width="match_parent"
+            android:layout_width="wrap_content"
             android:layout_height="wrap_content"
-            android:text="GlassTasks Status: Ready"
-            android:textColor="#333333"
-            android:textSize="14sp"
-            android:textAllCaps="true"
+            android:text="GLASSTASKS"
+            android:textColor="#000000"
+            android:letterSpacing="0.2"
+            android:textSize="11sp"
             android:textStyle="bold" />
 
         <TextView
             android:id="@+id/devicesText"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:layout_marginTop="4dp"
-            android:text="Searching for Mike..."
-            android:textColor="#666666"
-            android:textSize="16sp" />
-
-        <LinearLayout
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:layout_marginTop="16dp"
-            android:orientation="horizontal">
-
-            <Button
-                android:id="@+id/registerButton"
-                android:layout_width="0dp"
-                android:layout_height="wrap_content"
-                android:layout_weight="1"
-                android:layout_marginEnd="4dp"
-                android:text="Pair"
-                style="@style/Widget.Material3.Button.TonalButton" />
-
-            <Button
-                android:id="@+id/resetButton"
-                android:layout_width="0dp"
-                android:layout_height="wrap_content"
-                android:layout_weight="1"
-                android:layout_marginStart="4dp"
-                android:text="Refresh"
-                style="@style/Widget.Material3.Button.TonalButton" />
-        </LinearLayout>
-
-        <Button
-            android:id="@+id/updateGlassesButton"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:layout_marginTop="8dp"
-            android:text="Update Mike's Toolkit"
-            android:visibility="gone" />
-
-        <View
-            android:layout_width="match_parent"
-            android:layout_height="1dp"
-            android:layout_marginTop="20dp"
-            android:layout_marginBottom="20dp"
-            android:background="#DDDDDD" />
-
-        <!-- Task Creation Section -->
-        <TextView
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:text="Add New Task"
-            android:textColor="#212121"
-            android:textSize="20sp"
-            android:textStyle="bold" />
-
-        <LinearLayout
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:layout_marginTop="12dp"
-            android:orientation="horizontal">
-
-            <EditText
-                android:id="@+id/taskInput"
-                android:layout_width="0dp"
-                android:layout_height="wrap_content"
-                android:layout_weight="1"
-                android:hint="e.g. Inspect engine block"
-                android:inputType="textCapSentences"
-                android:minHeight="48dp" />
-
-            <Button
-                android:id="@+id/btnAddTask"
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
-                android:layout_marginStart="8dp"
-                android:text="ADD" />
-        </LinearLayout>
-
-        <!-- Current Tasks List -->
-        <TextView
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:layout_marginTop="24dp"
-            android:text="Today's Worklist"
-            android:textColor="#212121"
-            android:textSize="18sp"
-            android:textStyle="bold" />
-
-        <LinearLayout
-            android:id="@+id/taskListContainer"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:layout_marginTop="8dp"
-            android:background="@android:color/white"
-            android:elevation="2dp"
-            android:orientation="vertical"
-            android:padding="8dp">
-            <!-- Tasks will be added here dynamically -->
-        </LinearLayout>
-
-        <Button
-            android:id="@+id/btnClearTasks"
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
-            android:layout_gravity="end"
-            android:layout_marginTop="8dp"
-            android:text="Clear List"
-            style="@style/Widget.Material3.Button.TextButton" />
-
-        <Button
-            android:id="@+id/btnGenerateReport"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:layout_marginTop="8dp"
-            android:text="GENERATE WORK REPORT (PDF)"
-            android:backgroundTint="#4CAF50"
-            android:textColor="@android:color/white" />
+            android:layout_marginTop="2dp"
+            android:text="Searching for Mike..."
+            android:textColor="#757575"
+            android:textSize="13sp" />
 
         <View
-            android:layout_width="match_parent"
-            android:layout_height="1dp"
-            android:layout_marginTop="20dp"
-            android:layout_marginBottom="20dp"
-            android:background="#DDDDDD" />
+            android:layout_width="40dp"
+            android:layout_height="2dp"
+            android:layout_marginTop="8dp"
+            android:background="#000000" />
+    </LinearLayout>
 
-        <!-- Control Section -->
-        <TextView
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:text="Mike's Controls"
-            android:textColor="#212121"
-            android:textSize="20sp"
-            android:textStyle="bold" />
+    <!-- MAIN CONTENT AREA -->
+    <FrameLayout
+        android:id="@+id/fragmentContainer"
+        android:layout_width="match_parent"
+        android:layout_height="0dp"
+        app:layout_constraintBottom_toTopOf="@+id/bottomNavigation"
+        app:layout_constraintTop_toBottomOf="@id/headerBar">
 
+        <!-- TAB 1: WORKLIST -->
+        <ScrollView
+            android:id="@+id/tasksSection"
+            android:layout_width="match_parent"
+            android:layout_height="match_parent"
+            android:paddingHorizontal="16dp"
+            android:visibility="visible">
+
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:orientation="vertical"
+                android:paddingTop="8dp">
+
+                <LinearLayout
+                    android:id="@+id/taskListContainer"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:orientation="vertical" />
+
+                <View
+                    android:layout_width="match_parent"
+                    android:layout_height="100dp" /> <!-- Bottom padding for FAB -->
+            </LinearLayout>
+        </ScrollView>
+
+        <!-- TAB 2: COCKPIT / CONTROL -->
         <LinearLayout
+            android:id="@+id/glassSection"
             android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:layout_marginTop="12dp"
-            android:orientation="horizontal">
+            android:layout_height="match_parent"
+            android:gravity="center_horizontal"
+            android:orientation="vertical"
+            android:padding="32dp"
+            android:visibility="gone">
+
+            <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="MIKE CONTROL"
+                android:textColor="#000000"
+                android:letterSpacing="0.1"
+                android:textSize="18sp"
+                android:textStyle="bold" />
 
             <Button
                 android:id="@+id/btnDisplay"
-                android:layout_width="0dp"
-                android:layout_height="64dp"
-                android:layout_weight="1"
-                android:layout_marginEnd="6dp"
-                android:text="SYNC TASKS"
-                android:backgroundTint="#2196F3"
-                android:textColor="@android:color/white" />
+                android:layout_width="match_parent"
+                android:layout_height="56dp"
+                android:layout_marginTop="40dp"
+                android:text="RE-SYNC HUD"
+                android:backgroundTint="#000000"
+                android:textColor="#FFFFFF"
+                app:cornerRadius="4dp" />
 
             <Button
                 android:id="@+id/btnCamera"
-                android:layout_width="0dp"
-                android:layout_height="64dp"
-                android:layout_weight="1"
-                android:layout_marginStart="6dp"
-                android:text="VIEW POV" />
+                android:layout_width="match_parent"
+                android:layout_height="56dp"
+                android:layout_marginTop="12dp"
+                android:text="WAKE CAMERA"
+                android:backgroundTint="#F2F2F2"
+                android:textColor="#000000"
+                app:cornerRadius="4dp" />
+
+            <TextureView
+                android:id="@+id/cameraPreview"
+                android:layout_width="match_parent"
+                android:layout_height="220dp"
+                android:layout_marginTop="24dp"
+                android:visibility="gone" />
+
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="40dp"
+                android:orientation="horizontal">
+
+                <Button
+                    android:id="@+id/registerButton"
+                    android:layout_width="0dp"
+                    android:layout_height="wrap_content"
+                    android:layout_weight="1"
+                    android:text="PAIR"
+                    style="@style/Widget.Material3.Button.TextButton"
+                    android:textColor="#000000" />
+
+                <Button
+                    android:id="@+id/resetButton"
+                    android:layout_width="0dp"
+                    android:layout_height="wrap_content"
+                    android:layout_weight="1"
+                    android:text="RESET"
+                    style="@style/Widget.Material3.Button.TextButton"
+                    android:textColor="#000000" />
+            </LinearLayout>
+
+            <TextView android:id="@+id/imuText" android:layout_width="0dp" android:layout_height="0dp" android:visibility="gone"/>
+            <TextView android:id="@+id/gestureText" android:layout_width="0dp" android:layout_height="0dp" android:visibility="gone"/>
         </LinearLayout>
 
-        <TextureView
-            android:id="@+id/cameraPreview"
-            android:layout_width="match_parent"
-            android:layout_height="250dp"
-            android:layout_marginTop="16dp"
-            android:visibility="gone" />
-
-        <!-- Stats Section -->
+        <!-- TAB 3: ANALYTICS / REPORT -->
         <LinearLayout
+            android:id="@+id/reportSection"
             android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:layout_marginTop="24dp"
-            android:background="#EEEEEE"
+            android:layout_height="match_parent"
+            android:gravity="center"
             android:orientation="vertical"
-            android:padding="16dp">
+            android:padding="32dp"
+            android:visibility="gone">
 
             <TextView
-                android:id="@+id/imuText"
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
-                android:text="Pitch: 0.0 | Yaw: 0.0"
-                android:textColor="#444444"
-                android:textSize="12sp" />
-
-            <TextView
-                android:id="@+id/gestureText"
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
-                android:layout_marginTop="4dp"
-                android:text="Glasses Heard: Waiting..."
-                android:textColor="#1976D2"
+                android:text="ANALYTICS"
+                android:textColor="#000000"
+                android:letterSpacing="0.1"
+                android:textSize="18sp"
                 android:textStyle="bold" />
-        </LinearLayout>
 
-    </LinearLayout>
-</ScrollView>
+            <Button
+                android:id="@+id/btnGenerateReport"
+                android:layout_width="match_parent"
+                android:layout_height="56dp"
+                android:layout_marginTop="40dp"
+                android:backgroundTint="#000000"
+                android:text="GENERATE PDF REPORT"
+                android:textColor="#FFFFFF"
+                app:cornerRadius="4dp" />
+
+            <Button
+                android:id="@+id/btnClearTasks"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="40dp"
+                android:text="WIPE SESSION"
+                style="@style/Widget.Material3.Button.TextButton"
+                android:textColor="#E53935" />
+
+        </LinearLayout>
+    </FrameLayout>
+
+    <!-- Minimal FAB -->
+    <com.google.android.material.floatingactionbutton.FloatingActionButton
+        android:id="@+id/fabAddTask"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_margin="24dp"
+        android:src="@android:drawable/ic_input_add"
+        app:layout_constraintBottom_toTopOf="@id/bottomNavigation"
+        app:layout_constraintEnd_toEndOf="parent"
+        app:backgroundTint="#000000"
+        app:tint="#FFFFFF"
+        app:elevation="8dp" />
+
+    <!-- Clean Bottom Nav -->
+    <com.google.android.material.bottomnavigation.BottomNavigationView
+        android:id="@+id/bottomNavigation"
+        android:layout_width="match_parent"
+        android:layout_height="64dp"
+        android:background="#FFFFFF"
+        app:itemIconTint="#000000"
+        app:itemTextColor="#000000"
+        app:layout_constraintBottom_toBottomOf="parent"
+        app:menu="@menu/bottom_nav_menu"
+        app:labelVisibilityMode="labeled" />
+
+    <EditText android:id="@+id/taskInput" android:layout_width="0dp" android:layout_height="0dp" android:visibility="gone" app:layout_constraintStart_toStartOf="parent" app:layout_constraintTop_toTopOf="parent" android:importantForAutofill="no" android:inputType="text"/>
+    <Button android:id="@+id/btnAddTask" android:layout_width="0dp" android:layout_height="0dp" android:visibility="gone" app:layout_constraintStart_toStartOf="parent" app:layout_constraintTop_toTopOf="parent"/>
+
+</androidx.constraintlayout.widget.ConstraintLayout>
