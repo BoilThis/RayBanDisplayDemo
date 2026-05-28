@@ -5,16 +5,12 @@ plugins {
 
 android {
     namespace = "com.boilthis.raybandisplaydemo"
-    compileSdk {
-        version = release(36) {
-            minorApiLevel = 1
-        }
-    }
+    compileSdk = 35  // Standard stable version for Android 15
 
     defaultConfig {
         applicationId = "com.boilthis.raybandisplaydemo"
         minSdk = 29
-        targetSdk = 36
+        targetSdk = 35
         versionCode = 1
         versionName = "1.0"
 
@@ -50,7 +46,7 @@ dependencies {
     implementation(libs.androidx.lifecycle.runtime.ktx)
     implementation(libs.androidx.appcompat)
     implementation("com.google.android.material:material:1.14.0")
-    
+
     implementation(libs.junit)
     androidTestImplementation(platform(libs.androidx.compose.bom))
     androidTestImplementation(libs.androidx.compose.ui.test.junit4)

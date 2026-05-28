@@ -1,550 +1,792 @@
-package com.boilthis.raybandisplaydemo
+﻿package com.boilthis.raybandisplaydemo
 
 import android.Manifest
-import android.content.Context
 import android.content.Intent
 import android.content.pm.PackageManager
-import android.graphics.*
+import android.content.res.ColorStateList
+import android.graphics.Bitmap
+import android.graphics.BitmapFactory
+import android.graphics.Color
+import android.graphics.Paint
+import android.graphics.Typeface
+import android.graphics.drawable.GradientDrawable
 import android.graphics.pdf.PdfDocument
-import android.hardware.Sensor
-import android.hardware.SensorEvent
-import android.hardware.SensorEventListener
-import android.hardware.SensorManager
-import android.media.AudioManager
-import android.media.MediaCodec
-import android.media.MediaFormat
-import android.os.Build
-import android.os.Bundle
-import android.speech.RecognitionListener
-import android.speech.RecognizerIntent
-import android.speech.SpeechRecognizer
+import android.net.Uri
+import android.os.*
 import android.util.Log
-import android.view.Gravity
-import android.view.Surface
-import android.view.TextureView
-import android.view.View
+import android.view.*
+import android.view.animation.AlphaAnimation
+import android.view.animation.Animation
 import android.widget.*
-import androidx.activity.result.ActivityResultLauncher
+import androidx.appcompat.app.AlertDialog
 import androidx.appcompat.app.AppCompatActivity
-import androidx.core.app.ActivityCompat
-import androidx.core.content.ContextCompat
 import androidx.core.content.FileProvider
+import androidx.core.graphics.toColorInt
 import androidx.lifecycle.lifecycleScope
 import com.google.android.material.bottomnavigation.BottomNavigationView
-import com.google.android.material.floatingactionbutton.FloatingActionButton
-import com.meta.wearable.dat.camera.Stream
-import com.meta.wearable.dat.camera.addStream
+import com.google.android.material.card.MaterialCardView
 import com.meta.wearable.dat.camera.types.PhotoData
-import com.meta.wearable.dat.camera.types.StreamConfiguration
-import com.meta.wearable.dat.camera.types.VideoFrame
-import com.meta.wearable.dat.camera.types.VideoQuality
-import com.meta.wearable.dat.core.Wearables
-import com.meta.wearable.dat.core.selectors.SpecificDeviceSelector
-import com.meta.wearable.dat.core.session.DeviceSession
-import com.meta.wearable.dat.core.session.DeviceSessionState
-import com.meta.wearable.dat.core.types.Permission
-import com.meta.wearable.dat.core.types.PermissionStatus
-import com.meta.wearable.dat.display.Display
-import com.meta.wearable.dat.display.addDisplay
-import com.meta.wearable.dat.display.types.DisplayConfiguration
-import com.meta.wearable.dat.display.types.DisplayState
-import com.meta.wearable.dat.display.views.*
-import kotlinx.coroutines.Job
-import kotlinx.coroutines.cancel
+import com.meta.wearable.dat.core.types.DeviceIdentifier
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import java.io.File
 import java.io.FileOutputStream
+import java.text.SimpleDateFormat
+import java.util.Date
 import java.util.Locale
-import java.util.Collections
-import org.json.JSONArray
-import org.json.JSONObject
 
-data class GlassTask(
-    val id: Int,
-    val title: String,
-    var status: String = "PENDING",
-    var results: String? = null,
-    var evidencePath: String? = null,
-    var priority: Int = 1
-)
+class MainActivity : AppCompatActivity() {
 
-class MainActivity : AppCompatActivity(), SensorEventListener {
+    // Wegmans Light Palette
+    private val WEGMANS_GREEN = "#006938"
+    private val WEGMANS_OFF_WHITE = "#F9F8F2"
+    private val TEXT_PRIMARY = "#1A1A1A"
+    private val TEXT_SECONDARY = "#666666"
 
-    companion object {
-        private const val TAG = "GlassTasks"
-    }
+    private val DEPARTMENTS_ALL = arrayOf(
+        "ALL DEPTS", "Produce", "Market Cafe", "Dairy", "Bakery", 
+        "Meat", "Seafood", "Floral", "Nature's Marketplace", "Front-end", "Logistics"
+    )
 
-    private lateinit var statusText: TextView
-    private lateinit var devicesText: TextView
-    private lateinit var imuText: TextView
-    private lateinit var gestureText: TextView
-    private lateinit var btnCamera: Button
-    private lateinit var btnSyncTasks: Button
-    private lateinit var cameraPreview: TextureView
+    private var currentUser: User? = null
+    private var availableDepartments = mutableListOf<String>()
 
-    private lateinit var taskInput: EditText
-    private lateinit var btnAddTask: Button
-    private lateinit var taskListContainer: LinearLayout
-    private lateinit var btnClearTasks: Button
-    private lateinit var btnGenerateReport: Button
+    private var devicesText: TextView? = null
+    private var taskListContainer: LinearLayout? = null
+    private var userListContainer: LinearLayout? = null
+    private var bottomNavigation: BottomNavigationView? = null
+    private var tasksSection: View? = null
+    private var glassSection: View? = null
+    private var reportSection: View? = null
+    private var userSection: View? = null
+    private var progressText: TextView? = null
+    private var deptSpinner: Spinner? = null
+
+    private lateinit var glassesManager: GlassesManager
+    private lateinit var voiceCommandManager: VoiceCommandManager
+    private lateinit var taskRepository: TaskRepository
+    private lateinit var userRepository: UserRepository
     
-    private lateinit var tasksSection: View
-    private lateinit var glassSection: View
-    private lateinit var reportSection: View
-    private lateinit var fabAddTask: FloatingActionButton
-    private lateinit var bottomNavigation: BottomNavigationView
-
-    private var activeSession: DeviceSession? = null
-    private var activeStream: Stream? = null
-    private var activeDisplay: Display? = null
-    private var videoDecoder: MediaCodec? = null
-    private var previewSurface: Surface? = null
-
-    private var speechRecognizer: SpeechRecognizer? = null
+    private var currentDeviceId: DeviceIdentifier? = null
     private var taskList = mutableListOf<GlassTask>()
+    private var userList = mutableListOf<User>()
     private var currentTaskIndex = 0
-    private var renderJob: Job? = null
-    private var hasAutoSynced = false
-
-    private lateinit var sensorManager: SensorManager
-    private var rotationSensor: Sensor? = null
-    private lateinit var requestPermissionLauncher: ActivityResultLauncher<Permission>
+    private var selectedDeptFilter = "ALL DEPTS"
+    
+    private var selectedUserDepartments = mutableListOf<String>()
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         setContentView(R.layout.activity_main)
 
-        // Initialize Wearables
-        try { Wearables.initialize(applicationContext) } catch (e: Exception) {}
-
-        // Bind UI
-        statusText = findViewById(R.id.statusText)
         devicesText = findViewById(R.id.devicesText)
-        imuText = findViewById(R.id.imuText)
-        gestureText = findViewById(R.id.gestureText)
-        btnCamera = findViewById(R.id.btnCamera)
-        btnSyncTasks = findViewById(R.id.btnDisplay)
-        cameraPreview = findViewById(R.id.cameraPreview)
-        taskInput = findViewById(R.id.taskInput)
-        btnAddTask = findViewById(R.id.btnAddTask)
         taskListContainer = findViewById(R.id.taskListContainer)
-        btnClearTasks = findViewById(R.id.btnClearTasks)
-        btnGenerateReport = findViewById(R.id.btnGenerateReport)
+        userListContainer = findViewById(R.id.userListContainer)
+        bottomNavigation = findViewById(R.id.bottomNavigation)
         tasksSection = findViewById(R.id.tasksSection)
         glassSection = findViewById(R.id.glassSection)
         reportSection = findViewById(R.id.reportSection)
-        fabAddTask = findViewById(R.id.fabAddTask)
-        bottomNavigation = findViewById(R.id.bottomNavigation)
+        userSection = findViewById(R.id.userSection)
+        progressText = findViewById(R.id.progressStats)
+        deptSpinner = findViewById(R.id.deptSpinner)
 
-        setupNavigation()
-        setupFab()
-
-        sensorManager = getSystemService(Context.SENSOR_SERVICE) as SensorManager
-        rotationSensor = sensorManager.getDefaultSensor(Sensor.TYPE_ROTATION_VECTOR)
-
-        requestPermissionLauncher = registerForActivityResult(Wearables.RequestPermissionContract()) { result ->
-            result.onSuccess { if (it == PermissionStatus.Granted) startCameraStream() }
-        }
-
-        findViewById<Button>(R.id.registerButton).setOnClickListener { Wearables.startRegistration(this) }
-        findViewById<Button>(R.id.resetButton).setOnClickListener { forceReset() }
-        btnCamera.setOnClickListener { checkCameraPermissionAndStart() }
-        btnSyncTasks.setOnClickListener { pushActiveTaskToGlasses(); startGlassesListening() }
-        btnGenerateReport.setOnClickListener { generatePdfReport() }
-        btnClearTasks.setOnClickListener {
-            android.app.AlertDialog.Builder(this)
-                .setTitle("RESET SESSION").setMessage("Clear all current progress?")
-                .setPositiveButton("CLEAR") { _, _ ->
-                    taskList.clear(); currentTaskIndex = 0; saveTasks(); refreshTaskListView()
-                }.setNegativeButton("CANCEL", null).show()
-        }
-
-        setupCameraSurface()
-        setupVoiceControl()
-        startObservingStates()
+        devicesText?.text = "SYSTEM INITIALIZING..."
         
-        loadTasks()
-        if (taskList.isEmpty()) {
-            taskList.add(GlassTask(1, "Restock Produce", priority = 3))
-            taskList.add(GlassTask(2, "Expiring Items Audit", priority = 2))
-            taskList.add(GlassTask(3, "Compliance Review", priority = 3))
-            saveTasks()
+        taskRepository = TaskRepository(this)
+        userRepository = UserRepository(this)
+        
+        val loggedInId = intent.getStringExtra("LOGGED_IN_USER_ID")
+        currentUser = userRepository.loadUsers().find { it.employeeId == loggedInId }
+        
+        setupAvailableDepartments()
+        
+        glassesManager = GlassesManager(this, this)
+        
+        voiceCommandManager = VoiceCommandManager(
+            context = this,
+            onCommandDetected = { command -> handleVoiceCommand(command) },
+            onListeningStateChanged = { isListening ->
+                runOnUiThread {
+                    if (isListening) {
+                        Toast.makeText(this, "Wegmans Voice: Listening...", Toast.LENGTH_SHORT).show()
+                        glassesManager.showListeningState()
+                    } else {
+                        pushToGlasses()
+                    }
+                }
+            }
+        )
+
+        glassesManager.onStatusChanged = { status ->
+            runOnUiThread {
+                devicesText?.text = status
+                Log.d("MainActivity", "SDK Status: $status")
+            }
         }
+        
+        // HUD interaction callbacks
+        glassesManager.onCaptureClick = { runOnUiThread { startCapture() } }
+        glassesManager.onReviewClick = { runOnUiThread { voiceCommandManager.startListening(dictation = true) } }
+        glassesManager.onCompleteClick = { runOnUiThread { markComplete() } }
+        glassesManager.onPrevClick = { runOnUiThread { movePrevious() } }
+        glassesManager.onNextClick = { runOnUiThread { moveNext() } }
+
+        setupDeptSpinner()
+        setupNavigation()
+        setupButtons()
+        setupUserAdmin()
+        initGroceryTasks()
+        checkPermissions()
+
+        bottomNavigation?.selectedItemId = R.id.nav_tasks
+    }
+
+    private fun setupAvailableDepartments() {
+        availableDepartments.clear()
+        availableDepartments.add("ALL DEPTS")
+        
+        currentUser?.let { user ->
+            // If they have specific departments assigned, only show those.
+            // If none assigned (empty list), we'll assume they have access to all (Admin-like)
+            if (user.departments.isNotEmpty()) {
+                availableDepartments.addAll(user.departments)
+            } else {
+                availableDepartments.addAll(DEPARTMENTS_ALL.filter { it != "ALL DEPTS" })
+            }
+        } ?: run {
+            availableDepartments.addAll(DEPARTMENTS_ALL.filter { it != "ALL DEPTS" })
+        }
+    }
+
+    private fun setupUserAdmin() {
+        userList = userRepository.loadUsers().toMutableList()
+        refreshUserListView()
+
+        findViewById<Button>(R.id.btnSelectDepts).setOnClickListener {
+            val depts = DEPARTMENTS_ALL.filter { it != "ALL DEPTS" }.toTypedArray()
+            val checked = BooleanArray(depts.size) { i -> depts[i] in selectedUserDepartments }
+            
+            AlertDialog.Builder(this)
+                .setTitle("Select Department Access")
+                .setMultiChoiceItems(depts, checked) { _, which, isChecked ->
+                    if (isChecked) selectedUserDepartments.add(depts[which])
+                    else selectedUserDepartments.remove(depts[which])
+                }
+                .setPositiveButton("Done", null)
+                .show()
+        }
+
+        findViewById<Button>(R.id.btnSaveUser).setOnClickListener {
+            val fName = findViewById<EditText>(R.id.editFirstName).text.toString()
+            val lName = findViewById<EditText>(R.id.editLastName).text.toString()
+            val eId = findViewById<EditText>(R.id.editEmployeeId).text.toString()
+            val pass = findViewById<EditText>(R.id.editPassword).text.toString()
+
+            if (fName.isBlank() || eId.isBlank()) {
+                Toast.makeText(this, "First Name and ID required", Toast.LENGTH_SHORT).show()
+                return@setOnClickListener
+            }
+
+            val newUser = User(eId, fName, lName, pass, selectedUserDepartments.toList())
+            userList.add(newUser)
+            userRepository.saveUsers(userList)
+            
+            // Clear form
+            findViewById<EditText>(R.id.editFirstName).text.clear()
+            findViewById<EditText>(R.id.editLastName).text.clear()
+            findViewById<EditText>(R.id.editEmployeeId).text.clear()
+            findViewById<EditText>(R.id.editPassword).text.clear()
+            selectedUserDepartments.clear()
+            
+            refreshUserListView()
+            Toast.makeText(this, "User $fName Added", Toast.LENGTH_SHORT).show()
+        }
+    }
+
+    private fun refreshUserListView() {
+        userListContainer?.removeAllViews()
+        userList.forEach { user ->
+            val userCard = MaterialCardView(this).apply {
+                layoutParams = LinearLayout.LayoutParams(
+                    LinearLayout.LayoutParams.MATCH_PARENT, 
+                    LinearLayout.LayoutParams.WRAP_CONTENT
+                ).apply { setMargins(0, 0, 0, 20) }
+                radius = 12f
+                strokeWidth = 1
+                setStrokeColor(ColorStateList.valueOf("#EEEEEE".toColorInt()))
+                setCardBackgroundColor(Color.WHITE)
+                cardElevation = 2f
+                
+                val layout = LinearLayout(context).apply {
+                    orientation = LinearLayout.VERTICAL
+                    setPadding(32, 32, 32, 32)
+                    
+                    val name = TextView(context).apply {
+                        text = "${user.firstName} ${user.lastName} (ID: ${user.employeeId})"
+                        setTextColor(TEXT_PRIMARY.toColorInt())
+                        textSize = 16f
+                        setTypeface(null, Typeface.BOLD)
+                    }
+                    addView(name)
+                    
+                    val depts = TextView(context).apply {
+                        text = "Authorized Access: ${user.departments.joinToString(", ")}"
+                        setTextColor(WEGMANS_GREEN.toColorInt())
+                        textSize = 12f
+                        setTypeface(null, Typeface.BOLD)
+                        setPadding(0, 8, 0, 0)
+                    }
+                    addView(depts)
+                }
+                addView(layout)
+            }
+            userListContainer?.addView(userCard)
+        }
+    }
+
+    private fun setupDeptSpinner() {
+        val adapter = ArrayAdapter(this, R.layout.spinner_item_elite, availableDepartments)
+        adapter.setDropDownViewResource(R.layout.spinner_dropdown_item_elite)
+        deptSpinner?.adapter = adapter
+        deptSpinner?.onItemSelectedListener = object : AdapterView.OnItemSelectedListener {
+            override fun onItemSelected(parent: AdapterView<*>?, view: View?, position: Int, id: Long) {
+                selectedDeptFilter = availableDepartments[position]
+                refreshTaskListView()
+                
+                val filtered = getFilteredTasks()
+                if (filtered.isNotEmpty() && taskList[currentTaskIndex] !in filtered) {
+                    currentTaskIndex = taskList.indexOf(filtered.first())
+                    pushToGlasses()
+                }
+            }
+            override fun onNothingSelected(parent: AdapterView<*>?) {}
+        }
+    }
+
+    private fun checkPermissions() {
+        val permissions = mutableListOf<String>()
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+            permissions.add(Manifest.permission.BLUETOOTH_CONNECT)
+            permissions.add(Manifest.permission.BLUETOOTH_SCAN)
+        } else {
+            permissions.add(Manifest.permission.ACCESS_FINE_LOCATION)
+        }
+        permissions.add(Manifest.permission.CAMERA)
+        permissions.add(Manifest.permission.RECORD_AUDIO)
+        
+        val toRequest = permissions.filter { checkSelfPermission(it) != PackageManager.PERMISSION_GRANTED }
+        if (toRequest.isNotEmpty()) {
+            requestPermissions(toRequest.toTypedArray(), 101)
+        } else {
+            observeDevices()
+        }
+    }
+
+    override fun onRequestPermissionsResult(requestCode: Int, permissions: Array<out String>, grantResults: IntArray) {
+        super.onRequestPermissionsResult(requestCode, permissions, grantResults)
+        if (requestCode == 101) observeDevices()
+    }
+
+    private fun initGroceryTasks() {
+        taskList = taskRepository.loadTasks().toMutableList()
+        if (taskList.isEmpty()) {
+            val deptData = mapOf(
+                "Produce" to arrayOf("Inspect Leafy Greens", "Check Organic Apple Stock", "Sanitize Misting System"),
+                "Market Cafe" to arrayOf("Check Hot Bar Temp", "Refill Self-Serve Soup", "Clean Dining Tables"),
+                "Dairy" to arrayOf("Audit Milk Expiration", "Check Yogurt Inventory", "Organize Cheese Case"),
+                "Bakery" to arrayOf("Verify Bread Crust Quality", "Check Pastry Case Stock", "Slice Fresh Loaves"),
+                "Meat" to arrayOf("Log Ground Beef Temps", "Grade Prime Cut Display", "Check Package Seals"),
+                "Seafood" to arrayOf("Verify Sustainable Labels", "Clean Ice Display", "Check Shrimp Freshness"),
+                "Floral" to arrayOf("Trim Fresh Bouquets", "Refill Vase Water", "Check Plant Hydration"),
+                "Nature's Marketplace" to arrayOf("Audit Supplement Aisle", "Check Bulk Bin Levels", "Organize Gluten-Free"),
+                "Front-end" to arrayOf("Sanitize POS Stations", "Check Cart Corral", "Audit Bag Inventory"),
+                "Logistics" to arrayOf("Unload Cold Shipment", "Scan Backroom Overstock", "Verify Delivery Invoice")
+            )
+
+            val sdf = SimpleDateFormat("HH:mm", Locale.getDefault())
+            val baseTime = System.currentTimeMillis()
+            
+            var idCounter = 0
+            deptData.forEach { (dept, tasks) ->
+                tasks.forEachIndexed { i, title ->
+                    // Set a dummy due time (e.g., 2 hours from now)
+                    val dueStr = sdf.format(Date(baseTime + 7200000)) 
+                    taskList.add(GlassTask(
+                        id = idCounter++, 
+                        title = title, 
+                        department = dept,
+                        dueTime = dueStr,
+                        durationEstimate = if (i % 2 == 0) "10m" else "20m"
+                    ))
+                }
+            }
+            taskRepository.saveTasks(taskList)
+        }
+        
+        val firstIncomplete = taskList.indexOfFirst { it.status != "COMPLETED" }
+        if (firstIncomplete != -1) currentTaskIndex = firstIncomplete
+        
         refreshTaskListView()
     }
 
     private fun setupNavigation() {
-        bottomNavigation.setOnItemSelectedListener { item ->
-            tasksSection.visibility = if (item.itemId == R.id.nav_tasks) View.VISIBLE else View.GONE
-            glassSection.visibility = if (item.itemId == R.id.nav_glass) View.VISIBLE else View.GONE
-            reportSection.visibility = if (item.itemId == R.id.nav_report) View.VISIBLE else View.GONE
-            if (item.itemId == R.id.nav_tasks) fabAddTask.show() else fabAddTask.hide()
+        bottomNavigation?.setOnItemSelectedListener { item ->
+            tasksSection?.visibility = if (item.itemId == R.id.nav_tasks) View.VISIBLE else View.GONE
+            glassSection?.visibility = if (item.itemId == R.id.nav_glass) View.VISIBLE else View.GONE
+            reportSection?.visibility = if (item.itemId == R.id.nav_report) View.VISIBLE else View.GONE
+            userSection?.visibility = if (item.itemId == R.id.nav_users) View.VISIBLE else View.GONE
             true
         }
     }
 
-    private fun setupFab() {
-        fabAddTask.setOnClickListener {
-            val layout = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; setPadding(64, 64, 64, 24) }
-            val input = EditText(this).apply {
-                hint = "ENTRY TITLE"; background = null; textSize = 22f; setTypeface(null, Typeface.BOLD)
-                inputType = android.text.InputType.TYPE_CLASS_TEXT or android.text.InputType.TYPE_TEXT_FLAG_CAP_SENTENCES
-            }
-            layout.addView(input)
-            layout.addView(TextView(this).apply { text = "PRIORITY"; textSize = 10f; setPadding(0, 32, 0, 8) })
-            val pSpinner = Spinner(this)
-            pSpinner.adapter = ArrayAdapter(this, android.R.layout.simple_spinner_item, arrayOf("LOW", "MEDIUM", "CRITICAL"))
-            layout.addView(pSpinner)
+    private fun setupButtons() {
+        findViewById<Button>(R.id.btnResync)?.setOnClickListener { 
+            currentDeviceId?.let { id -> glassesManager.resetAndConnect(id) { pushToGlasses() } } ?: pushToGlasses()
+        }
+        findViewById<Button>(R.id.registerButton)?.setOnClickListener { glassesManager.startRegistration(this) }
+        findViewById<Button>(R.id.btnClearTasks)?.setOnClickListener {
+            taskList.clear(); currentTaskIndex = 0; refreshTaskListView()
+        }
+        findViewById<Button>(R.id.btnMockVoice)?.apply {
+            text = "ACTIVATE WEGMANS VOICE"
+            setOnClickListener { voiceCommandManager.startListening() }
+        }
+        findViewById<Button>(R.id.btnGenerateReport)?.setOnClickListener { generateElitePdfReport() }
+    }
 
-            android.app.AlertDialog.Builder(this).setTitle("NEW WORK ITEM").setView(layout).setPositiveButton("CREATE") { _, _ ->
-                val title = input.text.toString()
-                if (title.isNotBlank()) {
-                    taskList.add(GlassTask(System.currentTimeMillis().toInt(), title, priority = pSpinner.selectedItemPosition + 1))
-                    saveTasks(); refreshTaskListView()
+    private fun moveNext() {
+        if (taskList.isEmpty()) return
+        val filtered = getFilteredTasks()
+        if (filtered.isEmpty()) return
+        
+        val currentInFiltered = filtered.indexOf(taskList[currentTaskIndex])
+        var nextInFiltered = currentInFiltered
+        
+        for (i in 1 until filtered.size) {
+            val candidateIdx = (currentInFiltered + i) % filtered.size
+            if (filtered[candidateIdx].status != "COMPLETED") {
+                nextInFiltered = candidateIdx
+                break
+            }
+        }
+        
+        if (nextInFiltered == currentInFiltered) {
+            nextInFiltered = (currentInFiltered + 1) % filtered.size
+        }
+
+        currentTaskIndex = taskList.indexOf(filtered[nextInFiltered])
+        runOnUiThread { refreshTaskListView(); pushToGlasses() }
+    }
+
+    private fun movePrevious() {
+        if (taskList.isEmpty()) return
+        val filtered = getFilteredTasks()
+        if (filtered.isEmpty()) return
+        
+        val currentInFiltered = filtered.indexOf(taskList[currentTaskIndex])
+        var prevInFiltered = currentInFiltered
+
+        for (i in 1 until filtered.size) {
+            val candidateIdx = if (currentInFiltered - i < 0) filtered.size - (i - currentInFiltered) else currentInFiltered - i
+            val normIdx = (candidateIdx + filtered.size) % filtered.size
+            if (filtered[normIdx].status != "COMPLETED") {
+                prevInFiltered = normIdx
+                break
+            }
+        }
+
+        if (prevInFiltered == currentInFiltered) {
+            prevInFiltered = if (currentInFiltered - 1 < 0) filtered.size - 1 else currentInFiltered - 1
+        }
+
+        currentTaskIndex = taskList.indexOf(filtered[prevInFiltered])
+        runOnUiThread { refreshTaskListView(); pushToGlasses() }
+    }
+
+    private fun markComplete() {
+        if (taskList.isEmpty()) return
+        val task = taskList[currentTaskIndex]
+        task.status = "COMPLETED"
+        
+        // Record attribution
+        val user = currentUser
+        task.completedBy = if (user != null) "${user.firstName} ${user.lastName}" else "Anonymous"
+        task.completionTime = SimpleDateFormat("HH:mm", Locale.getDefault()).format(Date())
+        
+        taskRepository.saveTasks(taskList)
+        moveNext()
+    }
+
+    private fun moveTaskUp(index: Int) {
+        if (index > 0) {
+            val task = taskList.removeAt(index)
+            taskList.add(index - 1, task)
+            taskRepository.saveTasks(taskList)
+            refreshTaskListView()
+            pushToGlasses()
+        }
+    }
+
+    private fun moveTaskDown(index: Int) {
+        if (index < taskList.size - 1) {
+            val task = taskList.removeAt(index)
+            taskList.add(index + 1, task)
+            taskRepository.saveTasks(taskList)
+            refreshTaskListView()
+            pushToGlasses()
+        }
+    }
+
+    private fun handleVoiceCommand(command: String) {
+        if (command.startsWith("DICTATION:")) {
+            val text = command.removePrefix("DICTATION:")
+            val task = taskList[currentTaskIndex]
+            task.voiceNote = text
+            task.status = "COMPLETED"
+            
+            // Record attribution
+            val user = currentUser
+            task.completedBy = if (user != null) "${user.firstName} ${user.lastName}" else "Anonymous"
+            task.completionTime = SimpleDateFormat("HH:mm", Locale.getDefault()).format(Date())
+
+            taskRepository.saveTasks(taskList)
+            runOnUiThread { refreshTaskListView() }
+            pushToGlasses()
+            return
+        }
+
+        when (command.lowercase()) {
+            "next" -> moveNext()
+            "back", "previous" -> movePrevious()
+            "complete", "done" -> markComplete()
+            "capture", "photo" -> startCapture()
+            "review", "note" -> voiceCommandManager.startListening(dictation = true)
+        }
+    }
+
+    private fun startCapture() {
+        if (taskList.isEmpty() || currentTaskIndex !in taskList.indices) return
+        if (taskList[currentTaskIndex].status == "COMPLETED") return
+
+        lifecycleScope.launch {
+            try {
+                val photoData = glassesManager.takePhoto()
+                if (photoData != null) {
+                    val path = savePhotoToInternalStorage(photoData)
+                    if (path != null && currentTaskIndex in taskList.indices) {
+                        taskList[currentTaskIndex].status = "EVIDENCE CAPTURED"
+                        taskList[currentTaskIndex].capturedImagePath = path
+                        taskRepository.saveTasks(taskList)
+                    }
                 }
-            }.setNegativeButton("CANCEL", null).show()
+            } catch (e: Exception) {
+                Log.e("MainActivity", "Capture error", e)
+            } finally {
+                runOnUiThread { refreshTaskListView(); pushToGlasses() }
+            }
+        }
+    }
+
+    private fun savePhotoToInternalStorage(photoData: PhotoData): String? {
+        if (currentTaskIndex !in taskList.indices) return null
+        return try {
+            val fileName = "task_${taskList[currentTaskIndex].id}_${System.currentTimeMillis()}.jpg"
+            val file = File(filesDir, fileName)
+            FileOutputStream(file).use { out ->
+                when (photoData) {
+                    is PhotoData.Bitmap -> photoData.bitmap.compress(Bitmap.CompressFormat.JPEG, 90, out)
+                    is PhotoData.HEIC -> {
+                        val bytes = ByteArray(photoData.data.remaining())
+                        photoData.data.get(bytes)
+                        out.write(bytes)
+                    }
+                }
+            }
+            file.absolutePath
+        } catch (e: Exception) { null }
+    }
+
+    private fun observeDevices() {
+        glassesManager.observeDevices { devices ->
+            runOnUiThread {
+                if (devices.isNotEmpty()) {
+                    currentDeviceId = devices.first()
+                    currentDeviceId?.let { id -> glassesManager.connect(id) { pushToGlasses() } }
+                } else { currentDeviceId = null }
+            }
+        }
+    }
+
+    private fun getFilteredTasks(): List<GlassTask> {
+        val userDepts = currentUser?.departments ?: emptyList()
+        
+        return if (selectedDeptFilter == "ALL DEPTS") {
+            if (userDepts.isNotEmpty()) {
+                taskList.filter { it.department in userDepts }
+            } else {
+                taskList // Admin access to all
+            }
+        } else {
+            taskList.filter { it.department == selectedDeptFilter }
         }
     }
 
     private fun refreshTaskListView() {
-        taskListContainer.removeAllViews()
-        taskList.forEachIndexed { index, task ->
-            val card = androidx.cardview.widget.CardView(this).apply {
-                layoutParams = LinearLayout.LayoutParams(-1, -2).apply { setMargins(0, 4, 0, 12) }
-                radius = 4f; elevation = 2f; setCardBackgroundColor(if (index == currentTaskIndex) Color.parseColor("#F5F5F5") else Color.WHITE)
-            }
-            val container = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; setPadding(32, 24, 32, 24) }
-            val header = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL }
-            val indicator = View(this).apply { 
-                layoutParams = LinearLayout.LayoutParams(6, 40); setBackgroundColor(if (index == currentTaskIndex) Color.BLACK else Color.TRANSPARENT)
-            }
-            val title = TextView(this).apply {
-                text = task.title.uppercase(); textSize = 16f; setTypeface(null, Typeface.BOLD)
-                layoutParams = LinearLayout.LayoutParams(0, -2, 1f).apply { setMargins(24, 0, 0, 0) }; setTextColor(Color.BLACK)
-            }
-            val pDot = View(this).apply {
-                layoutParams = LinearLayout.LayoutParams(14, 14)
-                background = android.graphics.drawable.GradientDrawable().apply {
-                    shape = android.graphics.drawable.GradientDrawable.OVAL
-                    setColor(when(task.priority) { 3 -> Color.RED; 2 -> Color.parseColor("#FFA000"); else -> Color.LTGRAY })
+        val completedCount = taskList.count { it.status == "COMPLETED" }
+        val percent = if (taskList.isEmpty()) 0 else (completedCount * 100) / taskList.size
+        progressText?.text = getString(R.string.progress_placeholder, percent)
+
+        taskListContainer?.removeAllViews()
+        val filtered = getFilteredTasks()
+        
+        filtered.forEach { task ->
+            val indexInMain = taskList.indexOf(task)
+            val isSelected = indexInMain == currentTaskIndex
+            val isDone = task.status == "COMPLETED"
+            
+            val card = MaterialCardView(this).apply {
+                layoutParams = LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT).apply { setMargins(0, 0, 0, 24) }
+                radius = 16f
+                strokeWidth = if (isSelected) 4 else 1
+                setStrokeColor(ColorStateList.valueOf(if (isSelected) WEGMANS_GREEN.toColorInt() else "#EEEEEE".toColorInt()))
+                cardElevation = if (isSelected) 6f else 2f
+                setCardBackgroundColor(if (isSelected) WEGMANS_OFF_WHITE.toColorInt() else Color.WHITE)
+                
+                val mainLayout = LinearLayout(context).apply {
+                    orientation = LinearLayout.VERTICAL
+                    setPadding(32, 32, 32, 32)
+                    
+                    val header = LinearLayout(context).apply {
+                        orientation = LinearLayout.HORIZONTAL
+                        gravity = Gravity.CENTER_VERTICAL
+                        val title = TextView(context).apply {
+                            text = task.title
+                            setTextColor(if (isSelected || isDone) TEXT_PRIMARY.toColorInt() else TEXT_SECONDARY.toColorInt())
+                            textSize = 18f
+                            setTypeface(null, if (isSelected) Typeface.BOLD else Typeface.NORMAL)
+                            layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
+                        }
+                        addView(title)
+                        
+                        val deptLabel = TextView(context).apply {
+                            text = task.department.uppercase()
+                            setTextColor(WEGMANS_GREEN.toColorInt())
+                            textSize = 10f
+                            setTypeface(null, Typeface.BOLD)
+                            setPadding(12, 0, 12, 0)
+                        }
+                        addView(deptLabel)
+
+                        val statusLight = View(context).apply {
+                            layoutParams = LinearLayout.LayoutParams(20, 20)
+                            background = GradientDrawable().apply {
+                                shape = GradientDrawable.OVAL
+                                setColor(if (isDone) WEGMANS_GREEN.toColorInt() else if (isSelected) "#00BCD4".toColorInt() else "#DDDDDD".toColorInt())
+                            }
+                        }
+                        addView(statusLight)
+                    }
+                    addView(header)
+
+                    val details = LinearLayout(context).apply {
+                        orientation = LinearLayout.HORIZONTAL
+                        gravity = Gravity.CENTER_VERTICAL
+                        setPadding(0, 12, 0, 0)
+                        val status = TextView(context).apply {
+                            text = task.status
+                            setTextColor(if (isDone) WEGMANS_GREEN.toColorInt() else TEXT_SECONDARY.toColorInt())
+                            textSize = 11f
+                            layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
+                        }
+                        addView(status)
+
+                        if (task.capturedImagePath != null) {
+                            val thumbCard = MaterialCardView(context).apply {
+                                layoutParams = LinearLayout.LayoutParams(110, 110).apply { setMargins(16, 0, 16, 0) }
+                                radius = 8f
+                                val thumb = ImageView(context).apply {
+                                    layoutParams = FrameLayout.LayoutParams(FrameLayout.LayoutParams.MATCH_PARENT, FrameLayout.LayoutParams.MATCH_PARENT)
+                                    scaleType = ImageView.ScaleType.CENTER_CROP
+                                    setImageURI(Uri.fromFile(File(task.capturedImagePath!!)))
+                                    setOnClickListener { showFullImage(task.capturedImagePath!!) }
+                                }
+                                addView(thumb)
+                            }
+                            addView(thumbCard)
+                        }
+
+                        val controls = LinearLayout(context).apply {
+                            orientation = LinearLayout.HORIZONTAL
+                            val upBtn = TextView(context).apply { text = "▲"; setTextColor("#CCCCCC".toColorInt()); textSize = 16f; setPadding(12, 8, 12, 8); setOnClickListener { moveTaskUp(indexInMain) } }
+                            val downBtn = TextView(context).apply { text = "▼"; setTextColor("#CCCCCC".toColorInt()); textSize = 16f; setPadding(12, 8, 12, 8); setOnClickListener { moveTaskDown(indexInMain) } }
+                            addView(upBtn); addView(downBtn)
+                        }
+                        addView(controls)
+                    }
+                    addView(details)
+
+                    task.voiceNote?.let { note ->
+                        val voiceBox = LinearLayout(context).apply {
+                            orientation = LinearLayout.VERTICAL
+                            setPadding(24, 16, 24, 16)
+                            layoutParams = LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT).apply { setMargins(0, 24, 0, 0) }
+                            background = GradientDrawable().apply { setColor("#F0F0F0".toColorInt()); cornerRadius = 12f }
+                            addView(TextView(context).apply { text = "AUDIT NOTE"; setTextColor(WEGMANS_GREEN.toColorInt()); textSize = 9f; setTypeface(null, Typeface.BOLD) })
+                            addView(TextView(context).apply { text = getString(R.string.review_placeholder, note); setTextColor(TEXT_PRIMARY.toColorInt()); textSize = 14f; setPadding(0, 4, 0, 0) })
+                        }
+                        addView(voiceBox)
+                    }
+                }
+                addView(mainLayout)
+                setOnClickListener { currentTaskIndex = indexInMain; refreshTaskListView(); pushToGlasses() }
+                if (isSelected) {
+                    val pulse = AlphaAnimation(0.8f, 1.0f).apply { duration = 1000; repeatMode = Animation.REVERSE; repeatCount = Animation.INFINITE }
+                    startAnimation(pulse)
                 }
             }
-            header.addView(indicator); header.addView(title); header.addView(pDot)
-            container.addView(header)
-
-            val status = TextView(this).apply {
-                text = task.status; textSize = 10f; letterSpacing = 0.1f; setPadding(30, 4, 0, 0)
-                setTextColor(if (task.status == "PENDING") Color.GRAY else Color.parseColor("#388E3C"))
-            }
-            container.addView(status)
-
-            if (task.results != null) {
-                container.addView(TextView(this).apply { text = "\"${task.results}\""; textSize = 14f; setPadding(30, 16, 0, 0); setTextColor(Color.DKGRAY); setTypeface(null, Typeface.ITALIC) })
-            }
-            if (task.evidencePath != null) {
-                container.addView(ImageView(this).apply {
-                    val opts = BitmapFactory.Options().apply { inSampleSize = 4 }
-                    setImageBitmap(BitmapFactory.decodeFile(task.evidencePath, opts))
-                    adjustViewBounds = true; layoutParams = LinearLayout.LayoutParams(-1, 450).apply { setMargins(30, 20, 0, 0) }
-                    scaleType = ImageView.ScaleType.CENTER_CROP; setOnClickListener { showFullImage(task.evidencePath!!) }
-                })
-            }
-            val actions = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL; gravity = Gravity.END; setPadding(0, 16, 0, 0) }
-            actions.addView(ImageButton(this).apply {
-                setImageResource(android.R.drawable.ic_menu_delete); setBackgroundColor(Color.TRANSPARENT); setColorFilter(Color.LTGRAY)
-                setOnClickListener { taskList.removeAt(index); saveTasks(); refreshTaskListView() }
-            })
-            container.addView(actions); card.addView(container); taskListContainer.addView(card)
+            taskListContainer?.addView(card)
         }
     }
 
-    private fun renderTaskHUD(display: Display, task: GlassTask) {
-        val next = if (currentTaskIndex + 1 in taskList.indices) taskList[currentTaskIndex + 1] else null
-        lifecycleScope.launch {
+    private fun showFullImage(path: String) {
+        val imgView = ImageView(this).apply { setImageBitmap(BitmapFactory.decodeFile(path)); adjustViewBounds = true }
+        AlertDialog.Builder(this).setView(imgView).setPositiveButton("Close", null).show()
+    }
+
+    private fun generateElitePdfReport() {
+        lifecycleScope.launch(Dispatchers.IO) {
+            val pdfDocument = PdfDocument()
+            val paint = Paint()
+            val pageWidth = 595
+            val pageHeight = 842
+            var pageNumber = 1
+            var myPageInfo = PdfDocument.PageInfo.Builder(pageWidth, pageHeight, pageNumber).create()
+            var myPage = pdfDocument.startPage(myPageInfo)
+            var canvas = myPage.canvas
+            val margin = 40f
+            val columnGap = 20f
+            val columnWidth = (pageWidth - (margin * 2) - columnGap) / 2
+            var currentColumn = 0
+            var y = 160f
+
+            fun drawHeader(canv: android.graphics.Canvas) {
+                paint.color = WEGMANS_GREEN.toColorInt()
+                canv.drawRect(0f, 0f, pageWidth.toFloat(), 120f, paint)
+                paint.color = Color.WHITE
+                paint.typeface = Typeface.create(Typeface.SANS_SERIF, Typeface.BOLD)
+                paint.textSize = 22f
+                canv.drawText("WEGMANS ELITE AUDIT REPORT", margin, 65f, paint)
+                paint.typeface = Typeface.create(Typeface.SANS_SERIF, Typeface.NORMAL)
+                paint.textSize = 10f
+                val dateStr = SimpleDateFormat("MMMM dd, yyyy - HH:mm", Locale.getDefault()).format(Date())
+                canv.drawText("GENERATED ON: $dateStr", margin, 90f, paint)
+            }
+
+            drawHeader(canvas)
+            val completed = taskList.count { it.status == "COMPLETED" }
+            val percent = if (taskList.isEmpty()) 0 else (completed * 100) / taskList.size
+            val sentiment = analyzeSentiment(taskList)
+            paint.color = Color.BLACK
+            paint.textSize = 14f
+            paint.typeface = Typeface.create(Typeface.SANS_SERIF, Typeface.BOLD)
+            val summaryText = "EXECUTIVE SUMMARY: $percent% COMPLETE | SENTIMENT: $sentiment"
+            canvas.drawText(summaryText, (pageWidth - paint.measureText(summaryText)) / 2f, 150f, paint)
+            paint.color = "#DDDDDD".toColorInt()
+            paint.strokeWidth = 1f
+            canvas.drawLine(margin, 165f, pageWidth - margin, 165f, paint)
+            y = 190f
+
+            taskList.forEachIndexed { index, task ->
+                val textHeight = 65f
+                var imageAreaHeight = 0f
+                var scaledBitmap: Bitmap? = null
+                var finalImageHeight = 0f
+                if (task.capturedImagePath != null) {
+                    val bitmap = BitmapFactory.decodeFile(task.capturedImagePath)
+                    if (bitmap != null) {
+                        val targetWidth = columnWidth - 20f
+                        val scale = targetWidth / bitmap.width.toFloat()
+                        finalImageHeight = bitmap.height.toFloat() * scale
+                        imageAreaHeight = finalImageHeight + 15f
+                        scaledBitmap = Bitmap.createScaledBitmap(bitmap, targetWidth.toInt(), finalImageHeight.toInt(), true)
+                    }
+                }
+                val totalTaskHeight = textHeight + imageAreaHeight + 25f
+                if (y + totalTaskHeight > pageHeight - 50f) {
+                    if (currentColumn == 0) { currentColumn = 1; y = 190f }
+                    else {
+                        pdfDocument.finishPage(myPage)
+                        pageNumber++
+                        myPageInfo = PdfDocument.PageInfo.Builder(pageWidth, pageHeight, pageNumber).create()
+                        myPage = pdfDocument.startPage(myPageInfo)
+                        canvas = myPage.canvas
+                        drawHeader(canvas)
+                        currentColumn = 0
+                        y = 140f
+                    }
+                }
+                val xStart = margin + (currentColumn * (columnWidth + columnGap))
+                paint.color = "#F7F7F7".toColorInt(); canvas.drawRect(xStart, y - 10f, xStart + columnWidth, y + totalTaskHeight - 15f, paint)
+                paint.color = if (task.status == "COMPLETED") WEGMANS_GREEN.toColorInt() else Color.RED; canvas.drawRect(xStart, y - 10f, xStart + 6f, y + totalTaskHeight - 15f, paint)
+                paint.color = Color.BLACK; paint.typeface = Typeface.create(Typeface.SANS_SERIF, Typeface.BOLD); paint.textSize = 10f; canvas.drawText("${index + 1}. ${task.title.uppercase()}", xStart + 12f, y + 10f, paint)
+                paint.typeface = Typeface.create(Typeface.SANS_SERIF, Typeface.NORMAL); paint.textSize = 8f; canvas.drawText("DEPT: ${task.department}", xStart + 12f, y + 25f, paint)
+                if (task.voiceNote != null) { 
+                    paint.typeface = Typeface.create(Typeface.SANS_SERIF, Typeface.ITALIC)
+                    canvas.drawText("Note: \"${task.voiceNote}\"", xStart + 12f, y + 40f, paint) 
+                }
+
+                // New Audit Metadata in PDF
+                paint.typeface = Typeface.create(Typeface.SANS_SERIF, Typeface.NORMAL)
+                paint.textSize = 7f
+                paint.color = Color.GRAY
+                val attribution = if (task.completedBy != null) "PERFORMED BY: ${task.completedBy} at ${task.completionTime}" else "DUE BY: ${task.dueTime} (Est: ${task.durationEstimate})"
+                canvas.drawText(attribution, xStart + 12f, y + 52f, paint)
+                
+                if (scaledBitmap != null) {
+                    canvas.drawBitmap(scaledBitmap, xStart + 10f, y + 65f, null)
+                }
+                y += totalTaskHeight
+            }
+            pdfDocument.finishPage(myPage)
+            pushToGlasses()
+            val fileName = "Wegmans_Audit_Elite_${System.currentTimeMillis()}.pdf"
+            val file = File(getExternalFilesDir(Environment.DIRECTORY_DOCUMENTS), fileName)
             try {
-                display.sendContent {
-                    flexBox(Direction.COLUMN, 0, Alignment.CENTER, Alignment.CENTER, false, 1, null, null, null, null, FlexBoxBackground.CARD, null) {
-                        text("TASK PRO", TextStyle.META, TextColor.SECONDARY, 0f, 0f, Alignment.CENTER)
-                        text("${currentTaskIndex + 1} OF ${taskList.size}", TextStyle.META, TextColor.PRIMARY, 0f, 0f, Alignment.CENTER)
-                        if (task.priority == 3) text("● CRITICAL", TextStyle.META, TextColor.PRIMARY, 0f, 0f, Alignment.CENTER)
-                        text(task.title.uppercase(), TextStyle.HEADING, TextColor.PRIMARY, 0f, 0f, Alignment.CENTER)
-                        val icon = when (task.status) {
-                            "COMPLETED" -> IconName.CHECKMARK_CIRCLE
-                            "EVIDENCE CAPTURED" -> IconName.VIDEO_CAMERA
-                            else -> IconName.ARROW_RIGHT
-                        }
-                        flexBox(Direction.ROW, 12, Alignment.CENTER, Alignment.CENTER, false, 0, null, null, null, null, FlexBoxBackground.NONE, null) {
-                            icon(icon, IconStyle.FILLED, 0f, 0f, Alignment.CENTER)
-                            text(task.status, TextStyle.BODY, TextColor.PRIMARY, 0f, 0f, Alignment.CENTER)
-                        }
-                        if (next != null) {
-                            text("────────", TextStyle.META, TextColor.SECONDARY, 0f, 0f, Alignment.CENTER)
-                            text("NEXT: ${next.title.uppercase()}", TextStyle.META, TextColor.SECONDARY, 0f, 0f, Alignment.CENTER)
-                        }
-                    }
-                }
-            } catch (e: Exception) { Log.e(TAG, "HUD Error", e) }
+                pdfDocument.writeTo(FileOutputStream(file))
+                withContext(Dispatchers.Main) { Toast.makeText(this@MainActivity, "Elite Report Generated", Toast.LENGTH_LONG).show(); openPdf(file) }
+            } catch (e: Exception) { Log.e("MainActivity", "PDF error", e) } finally { pdfDocument.close() }
         }
     }
 
-    override fun dispatchKeyEvent(event: android.view.KeyEvent): Boolean {
-        if (event.action == android.view.KeyEvent.ACTION_DOWN) {
-            when (event.keyCode) {
-                android.view.KeyEvent.KEYCODE_DPAD_RIGHT, android.view.KeyEvent.KEYCODE_TAB, android.view.KeyEvent.KEYCODE_VOLUME_UP -> { moveNext(); return true }
-                android.view.KeyEvent.KEYCODE_DPAD_LEFT, android.view.KeyEvent.KEYCODE_VOLUME_DOWN -> { movePrevious(); return true }
-                android.view.KeyEvent.KEYCODE_DPAD_CENTER, android.view.KeyEvent.KEYCODE_ENTER, android.view.KeyEvent.KEYCODE_CAMERA, android.view.KeyEvent.KEYCODE_HEADSETHOOK -> { captureEvidence(); return true }
-            }
-        }
-        return super.dispatchKeyEvent(event)
+    private fun analyzeSentiment(tasks: List<GlassTask>): String {
+        val notes = tasks.mapNotNull { it.voiceNote?.lowercase() }
+        if (notes.isEmpty()) return "NEUTRAL (NO DATA)"
+        var score = 0
+        val pos = listOf("good", "great", "clean", "stocked", "complete", "verified", "excellent", "healthy", "fresh")
+        val neg = listOf("bad", "dirty", "empty", "expired", "failed", "broken", "spill", "unhealthy", "stale")
+        notes.forEach { n -> pos.forEach { if (n.contains(it)) score++ }; neg.forEach { if (n.contains(it)) score-- } }
+        return when { score > 2 -> "EXCELLENT"; score > 0 -> "POSITIVE"; score < -2 -> "CRITICAL"; score < 0 -> "CONCERNING"; else -> "NEUTRAL" }
     }
 
-    private fun moveNext() { if (taskList.isNotEmpty()) { currentTaskIndex = (currentTaskIndex + 1) % taskList.size; runOnUiThread { refreshTaskListView(); pushActiveTaskToGlasses() } } }
-    private fun movePrevious() { if (taskList.isNotEmpty()) { currentTaskIndex = if (currentTaskIndex - 1 < 0) taskList.size - 1 else currentTaskIndex - 1; runOnUiThread { refreshTaskListView(); pushActiveTaskToGlasses() } } }
-
-    private fun captureEvidence() {
-        val stream = activeStream ?: run { checkCameraPermissionAndStart(); return }
-        activeDisplay?.let { display ->
-            lifecycleScope.launch {
-                try {
-                    display.sendContent {
-                        flexBox(Direction.COLUMN, 0, Alignment.CENTER, Alignment.CENTER, false, 1, null, null, null, null, FlexBoxBackground.CARD, null) {
-                            icon(IconName.FOUR_CORNER_FRAME, IconStyle.FILLED, 0f, 0f, Alignment.CENTER)
-                            text("HOLD STEADY", TextStyle.HEADING, TextColor.PRIMARY, 0f, 0f, Alignment.CENTER)
-                        }
-                    }
-                } catch (e: Exception) {}
-            }
-        }
-        lifecycleScope.launch {
-            stream.capturePhoto().onSuccess { photo ->
-                val bitmap = when (photo) {
-                    is PhotoData.Bitmap -> photo.bitmap
-                    is PhotoData.HEIC -> {
-                        val buf = photo.data.duplicate().apply { rewind() }
-                        val bytes = ByteArray(buf.remaining()); buf.get(bytes)
-                        BitmapFactory.decodeByteArray(bytes, 0, bytes.size)
-                    }
-                }
-                if (bitmap != null) {
-                    val path = saveEvidenceToFile(bitmap, taskList[currentTaskIndex].id, System.currentTimeMillis())
-                    taskList[currentTaskIndex].apply { evidencePath = path; status = "EVIDENCE CAPTURED" }
-                    saveTasks(); runOnUiThread { bottomNavigation.selectedItemId = R.id.nav_tasks; refreshTaskListView(); pushActiveTaskToGlasses() }
-                } else pushActiveTaskToGlasses()
-            }.onFailure { _, _ -> pushActiveTaskToGlasses() }
-        }
-    }
-
-    private fun setupVoiceControl() {
-        if (ContextCompat.checkSelfPermission(this, Manifest.permission.RECORD_AUDIO) == PackageManager.PERMISSION_GRANTED) initializeSpeechRecognizer()
-        else ActivityCompat.requestPermissions(this, arrayOf(Manifest.permission.RECORD_AUDIO), 101)
-    }
-
-    private fun initializeSpeechRecognizer() {
-        runOnUiThread {
-            speechRecognizer?.destroy(); speechRecognizer = SpeechRecognizer.createSpeechRecognizer(this)
-            speechRecognizer?.setRecognitionListener(object : RecognitionListener {
-                override fun onResults(r: Bundle?) {
-                    r?.getStringArrayList(SpeechRecognizer.RESULTS_RECOGNITION)?.firstOrNull()?.let { processVoiceCommand(it.lowercase()) }
-                    lifecycleScope.launch { delay(800); startGlassesListening() }
-                }
-                override fun onError(e: Int) { if (e in listOf(5, 6, 7, 8)) lifecycleScope.launch { delay(1000); startGlassesListening() } }
-                override fun onReadyForSpeech(p: Bundle?) {}
-                override fun onBeginningOfSpeech() {}
-                override fun onRmsChanged(p: Float) {}
-                override fun onBufferReceived(b: ByteArray?) {}
-                override fun onEndOfSpeech() {}
-                override fun onPartialResults(p: Bundle?) {}
-                override fun onEvent(t: Int, p: Bundle?) {}
-            })
-        }
-    }
-
-    private fun startGlassesListening() {
-        val am = getSystemService(Context.AUDIO_SERVICE) as AudioManager
-        am.startBluetoothSco(); am.isBluetoothScoOn = true
-        val intent = Intent(RecognizerIntent.ACTION_RECOGNIZE_SPEECH).apply {
-            putExtra(RecognizerIntent.EXTRA_LANGUAGE_MODEL, RecognizerIntent.LANGUAGE_MODEL_FREE_FORM); putExtra(RecognizerIntent.EXTRA_LANGUAGE, Locale.US)
-        }
-        runOnUiThread { speechRecognizer?.startListening(intent) }
-    }
-
-    private fun processVoiceCommand(cmd: String) {
-        runOnUiThread { 
-            gestureText.text = "Heard: $cmd" 
-            if (cmd.startsWith("report")) {
-                val txt = cmd.replaceFirst("report", "").trim()
-                if (txt.isNotEmpty()) { taskList[currentTaskIndex].results = txt; saveTasks(); refreshTaskListView(); pushActiveTaskToGlasses() }
-            } else if (cmd.contains("next")) moveNext()
-            else if (cmd.contains("previous") || cmd.contains("back")) movePrevious()
-            else if (cmd.contains("capture") || cmd.contains("photo")) captureEvidence()
-            else if (cmd.contains("complete") || cmd.contains("done")) { taskList[currentTaskIndex].status = "COMPLETED"; saveTasks(); refreshTaskListView(); pushActiveTaskToGlasses() }
-        }
-    }
-
-    private fun pushActiveTaskToGlasses() {
-        if (taskList.isEmpty()) return
-        val task = taskList[currentTaskIndex]
-        renderJob?.cancel(); renderJob = lifecycleScope.launch {
-            startSession { session ->
-                lifecycleScope.launch {
-                    val disp = activeDisplay ?: session.addDisplay(DisplayConfiguration()).getOrNull()
-                    if (disp != null) { activeDisplay = disp; disp.state.collect { if (it == DisplayState.STARTED) { delay(300); renderTaskHUD(disp, task); this.cancel() } } }
-                }
-            }
-        }
-    }
-
-    private fun startSession(onSuccess: (DeviceSession) -> Unit) {
-        val s = activeSession; if (s?.state?.value == DeviceSessionState.STARTED) { onSuccess(s); return }
-        lifecycleScope.launch {
-            val dId = Wearables.devices.value.firstOrNull() ?: return@launch
-            Wearables.createSession(SpecificDeviceSelector(dId)).onSuccess { activeSession = it; it.start()
-                launch { it.state.collect { if (it == DeviceSessionState.STARTED) { runOnUiThread { onSuccess(activeSession!!) }; this.cancel() } } }
-            }
-        }
-    }
-
-    private fun startCameraStream() {
-        startSession { session -> 
-            lifecycleScope.launch { 
-                session.addStream(StreamConfiguration(VideoQuality.MEDIUM, 30, true)).onSuccess { stream -> 
-                    activeStream = stream
-                    stream.start().onSuccess { 
-                        launch { 
-                            stream.videoStream.collect { frame -> 
-                                renderFrame(frame) 
-                            } 
-                        } 
-                    } 
-                } 
-            } 
-        }
-    }
-
-    private fun renderFrame(f: VideoFrame) {
-        val s = previewSurface ?: return; f.buffer.rewind()
-        if (f.isCodecConfig) { initializeDecoder(f, s); return }
-        val d = videoDecoder ?: return
-        try {
-            val i = d.dequeueInputBuffer(10000)
-            if (i >= 0) { d.getInputBuffer(i)?.apply { clear(); put(f.buffer) }; d.queueInputBuffer(i, 0, f.buffer.remaining(), f.presentationTimeUs, 0) }
-            val info = MediaCodec.BufferInfo(); var out = d.dequeueOutputBuffer(info, 10000)
-            while (out >= 0) { d.releaseOutputBuffer(out, true); out = d.dequeueOutputBuffer(info, 0) }
-        } catch (e: Exception) {}
-    }
-
-    private fun initializeDecoder(f: VideoFrame, s: Surface) {
-        releaseDecoder(); val mime = if (isHEVC(f)) MediaFormat.MIMETYPE_VIDEO_HEVC else MediaFormat.MIMETYPE_VIDEO_AVC
-        val fmt = MediaFormat.createVideoFormat(mime, f.width, f.height)
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) fmt.setInteger(MediaFormat.KEY_LOW_LATENCY, 1)
-        if (f.isCodecConfig) fmt.setByteBuffer("csd-0", f.buffer)
-        try { videoDecoder = MediaCodec.createDecoderByType(mime); videoDecoder?.configure(fmt, s, null, 0); videoDecoder?.start() } catch (e: Exception) {}
-    }
-
-    private fun isHEVC(f: VideoFrame): Boolean { if (f.buffer.remaining() < 5) return false; val b = f.buffer.get(4).toInt(); return (b and 0x7E) shr 1 == 32 || (b and 0x7E) shr 1 == 33 }
-    private fun releaseDecoder() { try { videoDecoder?.stop(); videoDecoder?.release() } catch (e: Exception) {}; videoDecoder = null }
-    private fun setupCameraSurface() {
-        cameraPreview.surfaceTextureListener = object : TextureView.SurfaceTextureListener {
-            override fun onSurfaceTextureAvailable(s: SurfaceTexture, w: Int, h: Int) { previewSurface = Surface(s) }
-            override fun onSurfaceTextureSizeChanged(s: SurfaceTexture, w: Int, h: Int) {}
-            override fun onSurfaceTextureDestroyed(s: SurfaceTexture): Boolean { previewSurface?.release(); previewSurface = null; releaseDecoder(); return true }
-            override fun onSurfaceTextureUpdated(s: SurfaceTexture) {}
-        }
-    }
-
-    private fun startObservingStates() {
-        lifecycleScope.launch {
-            launch { Wearables.registrationState.collect { statusText.text = "GLASSTASKS" } }
-            launch { 
-                Wearables.devices.collect { devices ->
-                    devicesText.text = if (devices.isEmpty()) "SEARCHING..." else "READY"
-                    if (devices.isNotEmpty() && !hasAutoSynced) { hasAutoSynced = true; delay(1000); pushActiveTaskToGlasses(); startGlassesListening(); checkCameraPermissionAndStart() }
-                }
-            }
-        }
-    }
-
-    private fun forceReset() { lifecycleScope.launch { activeSession?.stop(); Wearables.reset(); delay(1000); Wearables.initialize(applicationContext); startObservingStates() } }
-    private fun checkCameraPermissionAndStart() { lifecycleScope.launch { Wearables.checkPermissionStatus(Permission.CAMERA).onSuccess { if (it == PermissionStatus.Granted) startCameraStream() else requestPermissionLauncher.launch(Permission.CAMERA) } } }
-    override fun onSensorChanged(e: SensorEvent?) {
-        if (e?.sensor?.type == Sensor.TYPE_ROTATION_VECTOR) {
-            val r = FloatArray(9); val o = FloatArray(3); SensorManager.getRotationMatrixFromVector(r, e.values); SensorManager.getOrientation(r, o)
-            runOnUiThread { imuText.text = String.format(Locale.US, "Pitch: %.1f | Yaw: %.1f", Math.toDegrees(o[1].toDouble()), Math.toDegrees(o[0].toDouble())) }
-        }
-    }
-    override fun onAccuracyChanged(s: Sensor?, a: Int) {}
-    override fun onResume() { super.onResume(); rotationSensor?.let { sensorManager.registerListener(this, it, SensorManager.SENSOR_DELAY_UI) } }
-    override fun onPause() { super.onPause(); sensorManager.unregisterListener(this) }
-    override fun onDestroy() { super.onDestroy(); speechRecognizer?.destroy(); releaseDecoder(); activeSession?.stop() }
-
-    private fun saveTasks() {
-        try {
-            val array = JSONArray()
-            taskList.forEach { task ->
-                val obj = JSONObject().apply {
-                    put("id", task.id); put("title", task.title); put("status", task.status)
-                    put("results", task.results ?: JSONObject.NULL); put("evidencePath", task.evidencePath ?: JSONObject.NULL); put("priority", task.priority)
-                }
-                array.put(obj)
-            }
-            FileOutputStream(File(filesDir, "tasks.json")).use { it.write(array.toString().toByteArray()) }
-        } catch (e: Exception) {}
-    }
-
-    private fun loadTasks() {
-        try {
-            val f = File(filesDir, "tasks.json")
-            if (!f.exists()) return
-            val array = JSONArray(f.readText())
-            taskList.clear()
-            for (i in 0 until array.length()) {
-                val o = array.getJSONObject(i)
-                taskList.add(GlassTask(o.getInt("id"), o.getString("title"), o.getString("status"),
-                    if (o.isNull("results")) null else o.getString("results"),
-                    if (o.isNull("evidencePath")) null else o.getString("evidencePath"), o.getInt("priority")))
-            }
-        } catch (e: Exception) {}
-    }
-
-    private fun saveEvidenceToFile(b: Bitmap, id: Int, t: Long): String? {
-        val f = File(getExternalFilesDir(null) ?: filesDir, "evidence_${id}_$t.jpg")
-        return try { FileOutputStream(f).use { out -> b.compress(Bitmap.CompressFormat.JPEG, 90, out); out.flush() }; f.absolutePath } catch (e: Exception) { null }
-    }
-
-    private fun showFullImage(p: String) {
-        val d = android.app.Dialog(this, android.R.style.Theme_Black_NoTitleBar_Fullscreen)
-        val i = ImageView(this).apply { setImageBitmap(BitmapFactory.decodeFile(p)); scaleType = ImageView.ScaleType.FIT_CENTER; setOnClickListener { d.dismiss() } }
-        d.setContentView(i); d.show()
-    }
-
-    private fun generatePdfReport() {
-        if (taskList.isEmpty()) return
-        val doc = PdfDocument()
-        val p = Paint(); val tp = Paint().apply { textSize = 24f; isFakeBoldText = true }; val bp = Paint().apply { textSize = 14f }
-        var pageNum = 1; var info = PdfDocument.PageInfo.Builder(595, 842, pageNum).create()
-        var page = doc.startPage(info); var canvas = page.canvas; var y = 50f
-        canvas.drawText("GLASSTASKS WORK REPORT", 50f, y, tp); y += 40f
-        taskList.forEach { task ->
-            if (y > 700) { doc.finishPage(page); pageNum++; info = PdfDocument.PageInfo.Builder(595, 842, pageNum).create(); page = doc.startPage(info); canvas = page.canvas; y = 50f }
-            canvas.drawText("TASK: ${task.title.uppercase()}", 50f, y, Paint(tp).apply { textSize = 18f }); y += 25f
-            canvas.drawText("STATUS: ${task.status}", 50f, y, bp); y += 20f
-            canvas.drawText("NOTE: ${task.results ?: "NONE"}", 50f, y, bp); y += 30f
-            if (task.evidencePath != null) {
-                val b = BitmapFactory.decodeFile(task.evidencePath)
-                if (b != null) { val s = Bitmap.createScaledBitmap(b, 300, 225, true); canvas.drawBitmap(s, 50f, y, p); y += 250f }
-            }
-            y += 30f
-        }
-        doc.finishPage(page)
-        val file = File(getExternalFilesDir(null), "WorkReport_${System.currentTimeMillis()}.pdf")
-        try { doc.writeTo(FileOutputStream(file)); sharePdf(file) } catch (e: Exception) {}
-        doc.close()
-    }
-
-    private fun sharePdf(file: File) {
+    private fun openPdf(file: File) {
         val uri = FileProvider.getUriForFile(this, "$packageName.fileprovider", file)
-        val intent = Intent(Intent.ACTION_SEND).apply { type = "application/pdf"; putExtra(Intent.EXTRA_STREAM, uri); addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION) }
-        startActivity(Intent.createChooser(intent, "Share Report"))
+        val intent = Intent(Intent.ACTION_VIEW).apply { setDataAndType(uri, "application/pdf"); addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION) }
+        try { startActivity(intent) } catch (e: Exception) { runOnUiThread { Toast.makeText(this, "No PDF viewer", Toast.LENGTH_SHORT).show() } }
+    }
+
+    private fun pushToGlasses() {
+        runOnUiThread {
+            if (taskList.isNotEmpty() && currentTaskIndex in taskList.indices) {
+                glassesManager.renderTaskHUD(taskList[currentTaskIndex], currentTaskIndex, taskList.size)
+            }
+        }
+    }
+
+    override fun onDestroy() {
+        super.onDestroy()
+        glassesManager.cleanup()
+        voiceCommandManager.destroy()
     }
 }

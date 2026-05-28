@@ -1,6 +1,7 @@
 package com.boilthis.raybandisplaydemo
 
 import android.app.Application
+import android.util.Log
 import com.meta.wearable.dat.core.Wearables
 
 class MyApplication : Application() {
@@ -9,6 +10,7 @@ class MyApplication : Application() {
         super.onCreate()
 
         // Initialize the Meta Wearables Device Access Toolkit
-        Wearables.initialize(this)
+        val result = Wearables.initialize(this)
+        Log.d("MyApplication", "Wearables SDK Initialize: $result")
     }
 }
