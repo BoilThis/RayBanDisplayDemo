@@ -1,5 +1,5 @@
 <resources>
-    <string name="app_name">RayBanDisplayDemo</string>
+    <string name="app_name">Wegmans StoreFlow</string>
     <string name="status_placeholder">STATUS: %1$s</string>
     <string name="review_placeholder">“%1$s”</string>
     <string name="progress_placeholder">%1$d%% AUDIT COMPLETE</string>

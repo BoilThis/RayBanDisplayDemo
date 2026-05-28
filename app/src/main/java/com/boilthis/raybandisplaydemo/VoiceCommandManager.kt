@@ -123,12 +123,19 @@ class VoiceCommandManager(
         onListeningStateChanged(false)
     }
 
+    private var lastProcessedTime = 0L
+
     override fun onPartialResults(partialResults: Bundle?) {
         val matches = partialResults?.getStringArrayList(SpeechRecognizer.RESULTS_RECOGNITION)
         matches?.firstOrNull()?.let { match ->
-            Log.v("VoiceCommandManager", "Partial: $match")
-            if (!isDictationMode) {
-                processText(match)
+            val currentTime = System.currentTimeMillis()
+            // Throttle partial result processing to once every 500ms
+            if (currentTime - lastProcessedTime > 500) {
+                lastProcessedTime = currentTime
+                Log.v("VoiceCommandManager", "Partial: $match")
+                if (!isDictationMode) {
+                    processText(match)
+                }
             }
         }
     }

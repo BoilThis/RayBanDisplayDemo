@@ -49,6 +49,10 @@ class GlassesManager(
     var onCompleteClick: (() -> Unit)? = null
     var onPrevClick: (() -> Unit)? = null
     var onNextClick: (() -> Unit)? = null
+    
+    // Subtask navigation
+    var onSubPrevClick: (() -> Unit)? = null
+    var onSubNextClick: (() -> Unit)? = null
 
     fun startRegistration(activity: Activity) {
         try {
@@ -126,10 +130,14 @@ class GlassesManager(
             val display = session.addDisplay(DisplayConfiguration()).getOrNull()
             activeDisplay = display
             
-            // Explicitly request camera stream capability
+            // Explicitly request camera stream capability and keep it warm
             val streamResult = session.addStream(StreamConfiguration(videoQuality = VideoQuality.HIGH))
-            activeStream = streamResult.getOrNull()
-            Log.d("GlassesManager", "Stream capability added: ${activeStream != null}, error: ${streamResult.exceptionOrNull()}")
+            val stream = streamResult.getOrNull()
+            activeStream = stream
+            Log.d("GlassesManager", "Stream capability added: ${activeStream != null}")
+            
+            // Warm up the stream immediately for instant capture
+            stream?.start()
 
             if (display == null) {
                 updateStatus("HUD ERR")
@@ -151,8 +159,14 @@ class GlassesManager(
         }
     }
 
-    fun renderTaskHUD(task: GlassTask, currentIndex: Int, totalTasks: Int) {
+    private var isCapturing = false
+
+    fun renderTaskHUD(task: GlassTask, currentIndex: Int, totalTasks: Int, focusedSubTaskIndex: Int = -1) {
         if (activeDisplay?.state?.value != DisplayState.STARTED) return
+        if (activeSession?.state?.value != DeviceSessionState.STARTED) return
+        
+        // SUSPEND UPDATES DURING CAPTURE TO PREVENT BLUETOOTH CONGESTION
+        if (isCapturing) return
 
         renderJob?.cancel()
         renderJob = lifecycleOwner.lifecycleScope.launch {
@@ -162,50 +176,60 @@ class GlassesManager(
                     val deptName = task.department.uppercase()
                     
                     display.sendContent {
-                        // ULTRA-ELITE COMMAND HUD LAYOUT
+                        // STOREFLOW COMMAND HUD LAYOUT
                         flexBox(Direction.COLUMN, 8, Alignment.CENTER, Alignment.CENTER, false, 1, null, null, 0, 0, FlexBoxBackground.NONE, null) {
                             
                             // Top Meta-Data Row
                             flexBox(Direction.ROW, 100, Alignment.CENTER, Alignment.CENTER, false, 0, null, null, 0, 0, FlexBoxBackground.NONE, null) {
-                                text("W-ELITE v1.0", TextStyle.META, TextColor.PRIMARY, 0f, 0f, Alignment.START)
+                                text("STOREFLOW v1.0", TextStyle.META, TextColor.PRIMARY, 0f, 0f, Alignment.START)
                                 text(time, TextStyle.META, TextColor.SECONDARY, 0f, 0f, Alignment.END)
                             }
 
                             text(deptName, TextStyle.META, TextColor.SECONDARY, 0f, 0f, Alignment.CENTER)
                             
-                            if (task.priority == 3) {
-                                flexBox(Direction.ROW, 6, Alignment.CENTER, Alignment.CENTER, false, 0, null, null, 0, 0, FlexBoxBackground.NONE, null) {
-                                    icon(IconName.EYE, IconStyle.FILLED, 0f, 0f, Alignment.CENTER)
-                                    text("HIGH PRIORITY AUDIT", TextStyle.META, TextColor.PRIMARY, 0f, 0f, Alignment.CENTER)
-                                }
-                            } else {
-                                text("STANDARD LOG", TextStyle.META, TextColor.SECONDARY, 0f, 0f, Alignment.CENTER)
-                            }
-
-                            // Primary Task Objective
+                            // Task Title
                             text(task.title.uppercase(), TextStyle.HEADING, TextColor.PRIMARY, 0f, 0f, Alignment.CENTER)
 
-                            val statusIcon = when (task.status) {
-                                "COMPLETED" -> IconName.CHECKMARK_CIRCLE
-                                "EVIDENCE CAPTURED" -> IconName.LIGHT_BULB
-                                else -> IconName.CIRCLE_HANDLE
+                            // Subtask Section
+                            if (task.subtasks.isNotEmpty()) {
+                                val focusIdx = if (focusedSubTaskIndex == -1) 0 else focusedSubTaskIndex
+                                if (focusIdx in task.subtasks.indices) {
+                                    val sub = task.subtasks[focusIdx]
+                                    text("SUBTASK ${focusIdx + 1}/${task.subtasks.size}", TextStyle.META, TextColor.SECONDARY, 0f, 0f, Alignment.CENTER)
+                                    text(sub.title.uppercase(), TextStyle.BODY, if (sub.isCompleted) TextColor.SECONDARY else TextColor.PRIMARY, 0f, 0f, Alignment.CENTER)
+                                    
+                                    if (sub.voiceNote != null) {
+                                        text("“${sub.voiceNote}”", TextStyle.META, TextColor.SECONDARY, 0f, 0f, Alignment.CENTER)
+                                    }
+                                }
+                                
+                                // Subtask Navigation
+                                flexBox(Direction.ROW, 40, Alignment.CENTER, Alignment.CENTER, false, 0, null, null, 0, 0, FlexBoxBackground.NONE, null) {
+                                    button("SUB-PREV", ButtonStyle.SECONDARY, null, { onSubPrevClick?.invoke() }, 0f, 0f, Alignment.CENTER)
+                                    button("SUB-NEXT", ButtonStyle.SECONDARY, null, { onSubNextClick?.invoke() }, 0f, 0f, Alignment.CENTER)
+                                }
                             }
 
-                            flexBox(Direction.ROW, 10, Alignment.CENTER, Alignment.CENTER, false, 0, null, null, 0, 0, FlexBoxBackground.NONE, null) {
-                                icon(statusIcon, IconStyle.FILLED, 0f, 0f, Alignment.CENTER)
-                                text(task.status, TextStyle.BODY, TextColor.PRIMARY, 0f, 0f, Alignment.CENTER)
-                            }
-
-                            if (task.voiceNote != null) {
-                                text("“${task.voiceNote}”", TextStyle.BODY, TextColor.SECONDARY, 0f, 0f, Alignment.CENTER)
-                            }
-                            
                             text("━━━━━━━━━━━━━━━━", TextStyle.META, TextColor.SECONDARY, 0f, 0f, Alignment.CENTER)
                             
-                            // High-Tech Action Center
+                            // High-Tech Action Center with Dynamic Status Colors
                             flexBox(Direction.ROW, 12, Alignment.CENTER, Alignment.CENTER, false, 0, null, null, 0, 0, FlexBoxBackground.NONE, null) {
-                                button("PHOTO", ButtonStyle.PRIMARY, IconName.VIDEO_CAMERA, { onCaptureClick?.invoke() }, 0f, 0f, Alignment.CENTER)
-                                button("LOG", ButtonStyle.SECONDARY, IconName.BULLHORN, { onReviewClick?.invoke() }, 0f, 0f, Alignment.CENTER)
+                                val focusIdx = if (focusedSubTaskIndex == -1) 0 else focusedSubTaskIndex
+                                val activeSub = if (task.subtasks.isNotEmpty() && focusIdx in task.subtasks.indices) task.subtasks[focusIdx] else null
+                                
+                                val hasPhoto = activeSub?.capturedImagePath != null
+                                val hasVoice = activeSub?.voiceNote != null
+                                
+                                // PHOTO: Green Check if done, else Gray Camera
+                                val photoStyle = if (hasPhoto) ButtonStyle.PRIMARY else ButtonStyle.SECONDARY
+                                val photoIcon = if (hasPhoto) IconName.CHECKMARK_CIRCLE else IconName.VIDEO_CAMERA
+                                button("PHOTO", photoStyle, photoIcon, { onCaptureClick?.invoke() }, 0f, 0f, Alignment.CENTER)
+                                
+                                // LOG: Green Check if done, else Gray Bullhorn
+                                val logStyle = if (hasVoice) ButtonStyle.PRIMARY else ButtonStyle.SECONDARY
+                                val logIcon = if (hasVoice) IconName.CHECKMARK_CIRCLE else IconName.BULLHORN
+                                button("LOG", logStyle, logIcon, { onReviewClick?.invoke() }, 0f, 0f, Alignment.CENTER)
+                                
                                 button("CLOSE", ButtonStyle.PRIMARY, IconName.CHECKMARK_CIRCLE, { onCompleteClick?.invoke() }, 0f, 0f, Alignment.CENTER)
                             }
                             
@@ -227,51 +251,60 @@ class GlassesManager(
     }
 
     suspend fun takePhoto(): PhotoData? {
-        val stream = activeStream
-        if (stream == null) {
-            Log.e("GlassesManager", "Cannot take photo: activeStream is null")
-            return null
+        val session = activeSession ?: run { Log.e("GlassesManager", "No active session"); return null }
+        if (session.state.value != DeviceSessionState.STARTED) { Log.e("GlassesManager", "Session not started"); return null }
+
+        isCapturing = true // HALT HUD UPDATES
+
+        // Try to re-use existing stream
+        var stream = activeStream
+        if (stream == null || stream.state.value == StreamState.STOPPED) {
+            val result = session.addStream(StreamConfiguration(videoQuality = VideoQuality.MEDIUM))
+            stream = result.getOrNull()
+            activeStream = stream
         }
 
-        try {
-            Log.d("GlassesManager", "Current stream state: ${stream.state.value}")
+        if (stream == null) {
+            Log.e("GlassesManager", "Failed to get stream")
+            isCapturing = false
+            return null
+        }
+        
+        return try {
+            stream.start()
             
-            // PRE-CAPTURE WARMUP: Ensure stream is active and stable
-            if (stream.state.value != StreamState.STARTED && stream.state.value != StreamState.STREAMING) {
-                Log.d("GlassesManager", "Initiating camera warmup...")
-                stream.start()
-                
-                // Increased polling with better condition checks
-                var waitCount = 0
-                while (waitCount < 15) { // Wait up to 4.5 seconds (300ms * 15)
-                    val state = stream.state.value
-                    Log.d("GlassesManager", "Warmup poll $waitCount: State=$state")
-                    if (state == StreamState.STARTED || state == StreamState.STREAMING) {
-                        break
-                    }
-                    delay(300)
-                    waitCount++
+            // Warmup
+            var ready = false
+            for (i in 0 until 30) {
+                // dummy
+                val state = stream.state.value
+                if (state == StreamState.STARTED || state == StreamState.STREAMING) {
+                    ready = true
+                    break
                 }
-            }
-            
-            // Secondary delay for hardware stabilization after state change
-            delay(500)
-            
-            Log.d("GlassesManager", "Triggering capture. Final state: ${stream.state.value}")
-            val captureResult = stream.capturePhoto()
-            
-            if (captureResult.isFailure) {
-                Log.e("GlassesManager", "Capture failed: ${captureResult.exceptionOrNull()}")
+                delay(200)
             }
 
-            return captureResult.getOrNull()
+            val photo = if (ready) stream.capturePhoto().getOrNull() else null
+            
+            // Re-enable HUD
+            isCapturing = false
+            
+            // Explicitly hint that the stream is no longer needed to free resources
+            // This forces a clean up of any buffered state
+            stream.stop()
+            
+            photo
         } catch (e: Exception) {
-            Log.e("GlassesManager", "Exception during takePhoto", e)
-            return null
+            Log.e("GlassesManager", "Capture error", e)
+            stream.stop()
+            isCapturing = false
+            null
         }
     }
 
     fun showListeningState() {
+        if (activeDisplay?.state?.value != DisplayState.STARTED) return
         lifecycleOwner.lifecycleScope.launch {
             activeDisplay?.let { display ->
                 display.sendContent {

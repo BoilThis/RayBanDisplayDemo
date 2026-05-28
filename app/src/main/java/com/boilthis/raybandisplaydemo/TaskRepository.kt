@@ -6,7 +6,7 @@ import org.json.JSONObject
 import java.io.File
 
 class TaskRepository(context: Context) {
-    private val file = File(context.filesDir, "tasks_v3.json")
+    private val file = File(context.filesDir, "tasks_v5.json")
 
     fun saveTasks(tasks: List<GlassTask>) {
         val array = JSONArray()
@@ -19,12 +19,23 @@ class TaskRepository(context: Context) {
                 put("priority", task.priority)
                 put("voiceNote", task.voiceNote ?: JSONObject.NULL)
                 put("capturedImagePath", task.capturedImagePath ?: JSONObject.NULL)
-                
-                // New Fields
                 put("completedBy", task.completedBy ?: JSONObject.NULL)
                 put("completionTime", task.completionTime ?: JSONObject.NULL)
                 put("dueTime", task.dueTime ?: JSONObject.NULL)
                 put("durationEstimate", task.durationEstimate ?: JSONObject.NULL)
+                
+                val subArray = JSONArray()
+                task.subtasks.forEach { sub ->
+                    val subObj = JSONObject().apply {
+                        put("id", sub.id)
+                        put("title", sub.title)
+                        put("isCompleted", sub.isCompleted)
+                        put("voiceNote", sub.voiceNote ?: JSONObject.NULL)
+                        put("capturedImagePath", sub.capturedImagePath ?: JSONObject.NULL)
+                    }
+                    subArray.put(subObj)
+                }
+                put("subtasks", subArray)
             }
             array.put(obj)
         }
@@ -38,6 +49,22 @@ class TaskRepository(context: Context) {
             val array = JSONArray(file.readText())
             for (i in 0 until array.length()) {
                 val obj = array.getJSONObject(i)
+                
+                val subtasks = mutableListOf<SubTask>()
+                if (obj.has("subtasks")) {
+                    val subArray = obj.getJSONArray("subtasks")
+                    for (j in 0 until subArray.length()) {
+                        val subObj = subArray.getJSONObject(j)
+                        subtasks.add(SubTask(
+                            id = subObj.getInt("id"),
+                            title = subObj.getString("title"),
+                            isCompleted = subObj.getBoolean("isCompleted"),
+                            voiceNote = if (subObj.isNull("voiceNote")) null else subObj.getString("voiceNote"),
+                            capturedImagePath = if (subObj.isNull("capturedImagePath")) null else subObj.getString("capturedImagePath")
+                        ))
+                    }
+                }
+
                 list.add(
                     GlassTask(
                         id = obj.getInt("id"),
@@ -47,12 +74,11 @@ class TaskRepository(context: Context) {
                         priority = obj.getInt("priority"),
                         voiceNote = if (obj.isNull("voiceNote")) null else obj.getString("voiceNote"),
                         capturedImagePath = if (obj.isNull("capturedImagePath")) null else obj.getString("capturedImagePath"),
-                        
-                        // New Fields
                         completedBy = if (obj.isNull("completedBy")) null else obj.getString("completedBy"),
                         completionTime = if (obj.isNull("completionTime")) null else obj.getString("completionTime"),
                         dueTime = if (obj.isNull("dueTime")) null else obj.getString("dueTime"),
-                        durationEstimate = if (obj.isNull("durationEstimate")) "15m" else obj.getString("durationEstimate")
+                        durationEstimate = if (obj.isNull("durationEstimate")) "15m" else obj.getString("durationEstimate"),
+                        subtasks = subtasks
                     )
                 )
             }
