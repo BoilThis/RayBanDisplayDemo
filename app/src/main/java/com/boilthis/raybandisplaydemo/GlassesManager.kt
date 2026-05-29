@@ -25,9 +25,11 @@ import kotlinx.coroutines.Job
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
-import java.text.SimpleDateFormat
+// No longer needed
+
 import java.util.Date
-import java.util.Locale
+// No longer needed
+
 
 class GlassesManager(
     private val context: Context,
@@ -172,74 +174,48 @@ class GlassesManager(
         renderJob = lifecycleOwner.lifecycleScope.launch {
             activeDisplay?.let { display ->
                 try {
-                    val time = SimpleDateFormat("HH:mm", Locale.getDefault()).format(Date())
-                    val deptName = task.department.uppercase()
+                        // No longer needed
+                    // No longer needed
                     
                     display.sendContent {
-                        // STOREFLOW COMMAND HUD LAYOUT
-                        flexBox(Direction.COLUMN, 8, Alignment.CENTER, Alignment.CENTER, false, 1, null, null, 0, 0, FlexBoxBackground.NONE, null) {
+                        // STRUCTURED CARD-BASED HUD
+                        flexBox(Direction.COLUMN, 4, Alignment.CENTER, Alignment.CENTER, false, 1, null, null, 0, 0, FlexBoxBackground.NONE, null) {
                             
-                            // Top Meta-Data Row
-                            flexBox(Direction.ROW, 100, Alignment.CENTER, Alignment.CENTER, false, 0, null, null, 0, 0, FlexBoxBackground.NONE, null) {
-                                text("STOREFLOW v1.0", TextStyle.META, TextColor.PRIMARY, 0f, 0f, Alignment.START)
-                                text(time, TextStyle.META, TextColor.SECONDARY, 0f, 0f, Alignment.END)
+                            // 1. Objective Card
+                            flexBox(Direction.COLUMN, 4, Alignment.CENTER, Alignment.CENTER, false, 0, null, null, 0, 0, FlexBoxBackground.CARD, null) {
+                                text("OBJECTIVE", TextStyle.META, TextColor.SECONDARY, 0f, 0f, Alignment.CENTER)
+                                text(task.title.uppercase(), TextStyle.HEADING, TextColor.PRIMARY, 0f, 0f, Alignment.CENTER)
+                                flexBox(Direction.ROW, 20, Alignment.CENTER, Alignment.CENTER, false, 0, null, null, 0, 0, FlexBoxBackground.NONE, null) {
+                                    button("PREV", ButtonStyle.SECONDARY, null, { onPrevClick?.invoke() }, 0f, 0f, Alignment.CENTER)
+                                    text("${currentIndex + 1}/${totalTasks}", TextStyle.META, TextColor.SECONDARY, 0f, 0f, Alignment.CENTER)
+                                    button("NEXT", ButtonStyle.SECONDARY, null, { onNextClick?.invoke() }, 0f, 0f, Alignment.CENTER)
+                                }
                             }
 
-                            text(deptName, TextStyle.META, TextColor.SECONDARY, 0f, 0f, Alignment.CENTER)
-                            
-                            // Task Title
-                            text(task.title.uppercase(), TextStyle.HEADING, TextColor.PRIMARY, 0f, 0f, Alignment.CENTER)
-
-                            // Subtask Section
-                            if (task.subtasks.isNotEmpty()) {
+                            // 2. Action Card (Subtask + Actions)
+                            flexBox(Direction.COLUMN, 4, Alignment.CENTER, Alignment.CENTER, false, 0, null, null, 0, 0, FlexBoxBackground.CARD, null) {
                                 val focusIdx = if (focusedSubTaskIndex == -1) 0 else focusedSubTaskIndex
-                                if (focusIdx in task.subtasks.indices) {
-                                    val sub = task.subtasks[focusIdx]
+                                val sub = task.subtasks.getOrNull(focusIdx)
+                                if (sub != null) {
                                     text("SUBTASK ${focusIdx + 1}/${task.subtasks.size}", TextStyle.META, TextColor.SECONDARY, 0f, 0f, Alignment.CENTER)
-                                    text(sub.title.uppercase(), TextStyle.BODY, if (sub.isCompleted) TextColor.SECONDARY else TextColor.PRIMARY, 0f, 0f, Alignment.CENTER)
-                                    
-                                    if (sub.voiceNote != null) {
-                                        text("“${sub.voiceNote}”", TextStyle.META, TextColor.SECONDARY, 0f, 0f, Alignment.CENTER)
-                                    }
+                                    text(sub.title.uppercase(), TextStyle.BODY, TextColor.PRIMARY, 0f, 0f, Alignment.CENTER)
                                 }
                                 
-                                // Subtask Navigation
-                                flexBox(Direction.ROW, 40, Alignment.CENTER, Alignment.CENTER, false, 0, null, null, 0, 0, FlexBoxBackground.NONE, null) {
+                                // Action Center
+                                flexBox(Direction.ROW, 10, Alignment.CENTER, Alignment.CENTER, false, 0, null, null, 0, 0, FlexBoxBackground.NONE, null) {
+                                    val hasPhoto = sub?.capturedImagePath != null
+                                    val hasVoice = sub?.voiceNote != null
+                                    
+                                    button("PHOTO", if (hasPhoto) ButtonStyle.PRIMARY else ButtonStyle.SECONDARY, IconName.VIDEO_CAMERA, { onCaptureClick?.invoke() }, 0f, 0f, Alignment.CENTER)
+                                    button("LOG", if (hasVoice) ButtonStyle.PRIMARY else ButtonStyle.SECONDARY, IconName.BULLHORN, { onReviewClick?.invoke() }, 0f, 0f, Alignment.CENTER)
+                                    button("DONE", ButtonStyle.PRIMARY, IconName.CHECKMARK_CIRCLE, { onCompleteClick?.invoke() }, 0f, 0f, Alignment.CENTER)
+                                }
+                                
+                                // Subtask Nav
+                                flexBox(Direction.ROW, 20, Alignment.CENTER, Alignment.CENTER, false, 0, null, null, 0, 0, FlexBoxBackground.NONE, null) {
                                     button("SUB-PREV", ButtonStyle.SECONDARY, null, { onSubPrevClick?.invoke() }, 0f, 0f, Alignment.CENTER)
                                     button("SUB-NEXT", ButtonStyle.SECONDARY, null, { onSubNextClick?.invoke() }, 0f, 0f, Alignment.CENTER)
                                 }
-                            }
-
-                            text("━━━━━━━━━━━━━━━━", TextStyle.META, TextColor.SECONDARY, 0f, 0f, Alignment.CENTER)
-                            
-                            // High-Tech Action Center with Dynamic Status Colors
-                            flexBox(Direction.ROW, 12, Alignment.CENTER, Alignment.CENTER, false, 0, null, null, 0, 0, FlexBoxBackground.NONE, null) {
-                                val focusIdx = if (focusedSubTaskIndex == -1) 0 else focusedSubTaskIndex
-                                val activeSub = if (task.subtasks.isNotEmpty() && focusIdx in task.subtasks.indices) task.subtasks[focusIdx] else null
-                                
-                                val hasPhoto = activeSub?.capturedImagePath != null
-                                val hasVoice = activeSub?.voiceNote != null
-                                
-                                // PHOTO: Green Check if done, else Gray Camera
-                                val photoStyle = if (hasPhoto) ButtonStyle.PRIMARY else ButtonStyle.SECONDARY
-                                val photoIcon = if (hasPhoto) IconName.CHECKMARK_CIRCLE else IconName.VIDEO_CAMERA
-                                button("PHOTO", photoStyle, photoIcon, { onCaptureClick?.invoke() }, 0f, 0f, Alignment.CENTER)
-                                
-                                // LOG: Green Check if done, else Gray Bullhorn
-                                val logStyle = if (hasVoice) ButtonStyle.PRIMARY else ButtonStyle.SECONDARY
-                                val logIcon = if (hasVoice) IconName.CHECKMARK_CIRCLE else IconName.BULLHORN
-                                button("LOG", logStyle, logIcon, { onReviewClick?.invoke() }, 0f, 0f, Alignment.CENTER)
-                                
-                                button("CLOSE", ButtonStyle.PRIMARY, IconName.CHECKMARK_CIRCLE, { onCompleteClick?.invoke() }, 0f, 0f, Alignment.CENTER)
-                            }
-                            
-                            text("━━━━━━━━━━━━━━━━", TextStyle.META, TextColor.SECONDARY, 0f, 0f, Alignment.CENTER)
-                            
-                            // Dynamic Navigation Map
-                            flexBox(Direction.ROW, 60, Alignment.CENTER, Alignment.CENTER, false, 0, null, null, 0, 0, FlexBoxBackground.NONE, null) {
-                                button("PREV", ButtonStyle.SECONDARY, null, { onPrevClick?.invoke() }, 0f, 0f, Alignment.CENTER)
-                                text("${currentIndex + 1}/${totalTasks}", TextStyle.META, TextColor.SECONDARY, 0f, 0f, Alignment.CENTER)
-                                button("NEXT", ButtonStyle.SECONDARY, null, { onNextClick?.invoke() }, 0f, 0f, Alignment.CENTER)
                             }
                         }
                     }
